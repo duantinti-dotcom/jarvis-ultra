@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type RealtimeChannel } from '@supaba
 import type { RelayCommand, CoreEvent, Task, Approval, Memory, DeviceStatus } from '@jarvis/contracts';
 import type { JarvisApi, Conn, StatusView, ChatMessage, ConversationSummary, Device } from './types';
 import { Emitter } from './events';
+import { cloudChat, cloudCancel, cloudConversations, cloudConversation, cloudTruncate, cloudDelete, cloudPin } from './cloud';
 
 export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
 export const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -174,5 +175,34 @@ export function createRemoteApi(deviceId: string | null): JarvisApi {
     async req() {
       throw new Error('Disponível somente no aplicativo JARVIS do computador.');
     },
+  };
+}
+
+/**
+ * Site: conversa, histórico e voz pela nuvem (funciona sem o PC).
+ * Recursos do computador (tarefas, confirmações, estado) usam o PC vinculado quando ele estiver online.
+ */
+export function createHybridApi(deviceId: string | null): JarvisApi {
+  const pc = createRemoteApi(deviceId);
+  const events = new Emitter<[CoreEvent]>();
+  pc.subscribe((e) => events.emit(e));
+  const conn = new Emitter<[Conn, string?]>();
+  return {
+    ...pc,
+    mode: 'remote',
+    cloud: true,
+    pcOnConn: pc.onConn,
+    subscribe: (fn) => events.on(fn),
+    onConn: (fn) => { fn('online'); return conn.on(fn); },
+    chat: (text, conversationId, opts) => {
+      if (!text.trim()) return Promise.reject(new Error('Pelo site, envie texto (imagens anexadas só no app do PC).'));
+      return cloudChat(text, conversationId, opts?.mode, (e) => events.emit(e));
+    },
+    cancelMessage: async (id) => cloudCancel(id),
+    conversations: cloudConversations,
+    conversation: cloudConversation,
+    truncate: cloudTruncate,
+    deleteConversation: cloudDelete,
+    pinConversation: cloudPin,
   };
 }

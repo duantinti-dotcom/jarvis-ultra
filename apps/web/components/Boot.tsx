@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { discoverLocal, createLocalApi } from '@/lib/local';
-import { remoteConfigured, supabase, listDevices, createRemoteApi, isOnline } from '@/lib/remote';
+import { remoteConfigured, supabase, listDevices, createHybridApi, isOnline } from '@/lib/remote';
 import type { JarvisApi, Device } from '@/lib/types';
 import { JarvisProvider } from '@/lib/store';
 import { Shell } from './Shell';
@@ -25,8 +25,8 @@ export function Boot() {
     const devices = (await listDevices()).filter((d) => !d.revoked_at);
     const saved = localStorage.getItem('jarvis.device');
     const chosen = devices.find((d) => d.id === saved) ?? (devices.length === 1 ? devices[0] : undefined);
-    if (chosen) setSt({ kind: 'ready', api: createRemoteApi(chosen.id), device: chosen });
-    else if (!devices.length) setSt({ kind: 'ready', api: createRemoteApi(null) });
+    if (chosen) setSt({ kind: 'ready', api: createHybridApi(chosen.id), device: chosen });
+    else if (!devices.length) setSt({ kind: 'ready', api: createHybridApi(null) });
     else setSt({ kind: 'pick', devices });
   };
 
@@ -50,7 +50,7 @@ export function Boot() {
         <div className="mt-8 w-full max-w-md">
           {st.kind === 'loading' && <p className="text-center text-muted text-sm">Conectando…</p>}
           {st.kind === 'login' && <Login onDone={() => resolveRemote()} />}
-          {st.kind === 'pick' && <Pick devices={st.devices} onPick={(d) => { localStorage.setItem('jarvis.device', d.id); setSt({ kind: 'ready', api: createRemoteApi(d.id), device: d }); }} onRefresh={resolveRemote} />}
+          {st.kind === 'pick' && <Pick devices={st.devices} onPick={(d) => { localStorage.setItem('jarvis.device', d.id); setSt({ kind: 'ready', api: createHybridApi(d.id), device: d }); }} onRefresh={resolveRemote} />}
           {st.kind === 'unconfigured' && (
             <div className="surface-raised rounded-2xl p-5 text-sm text-muted space-y-2">
               <p className="text-fg font-medium">Nenhum JARVIS Core encontrado.</p>

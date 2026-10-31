@@ -42,4 +42,9 @@ export interface JarvisApi {
   req<T = unknown>(path: string, init?: RequestInit & { json?: unknown }): Promise<T>;
   coreUrl?: string;
   token?: string;
+  /** Site: conversa pela IA na nuvem. */
+  cloud?: boolean;
+  pcOnConn?: (fn: (c: Conn, detail?: string) => void) => () => void;
+  deleteConversation?: (id: string) => Promise<void>;
+  pinConversation?: (id: string, pinned: boolean) => Promise<void>;
 }

@@ -47,6 +47,7 @@ const isSideEffect = (m: ToolManifest | undefined) => !!m && m.permissions.some(
 
 const STOP_RE = /^\s*(jarvis[,!\s]*)?(pare|parar|cancele|cancelar|interrompa|aborte|stop)\b.*\b(tarefa|tarefas|tudo|isso|agora|atual|execu[cç][aã]o)?/i;
 const VOICE_RE = /\b(ligue|ligar|ative|ativar|inicie|iniciar|comece|come[cç]ar)\b.*\b(modo de voz|chamada|liga[cç][aã]o|voz)\b/i;
+export const IMAGE_RE = /\b(crie|cria|criar|gere|gera|gerar|fa[cç]a|fazer|desenhe|desenha|desenhar|imagine)\b[^.?!]{0,60}\b(imagem|imagens|foto|desenho|ilustra[cç][aã]o|logo|logotipo|arte|wallpaper|papel de parede|figura|retrato|pintura)\b/i;
 const SMALLTALK_RE = /^\s*(jarvis[,!\s]*)?(oi|ol[aá]|e a[ií]|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tudo bem\??|como vai\??|tchau|at[eé] logo)[\s!.?]*$/i;
 
 export type ChatInput = { conversationId?: string | null; text: string; origin: RequestOrigin; projectId?: string | null; mode?: ReasoningMode; images?: string[] };
@@ -119,6 +120,7 @@ export class Brain {
     const mode: ReasoningMode = input.mode ?? this.db.getSetting<ReasoningMode>('chat.mode', 'balanced');
     const cfg = MODES[mode];
     const tm: TimingBreakdown = {};
+    if (IMAGE_RE.test(text) && !input.images?.length) return this.createImage(conversationId, messageId, input, text, signal, t0);
     const pick = (await this.router.pick(cfg.modelClass)) ?? (await this.router.pick('tools'));
     if (!pick) {
       const v = await this.ollama.version();
@@ -389,6 +391,27 @@ Pedido: """${text.slice(0, 2000)}"""`;
     const images = (input.images ?? []).slice(0, 4).map((b) => b.replace(/^data:[^,]+,/, ''));
     const messages: ChatMessage[] = [{ role: 'system', content: BASE_SYSTEM_PROMPT }, ...history.slice(-6), { role: 'user', content: text || 'Descreva a imagem.', images }];
     return this.answerOnly(conversationId, messageId, input, messages, vision, 0, signal, t0, { kind: 'question', agent: 'general', needs_tools: false, goal: text, clarifying_question: '', steps: [], success_criteria: [] }, mode, tm);
+  }
+
+  /**
+   * Criação de imagens: o modelo local reescreve o pedido em inglês (até 6 s) e a imagem é
+   * gerada pelo FLUX (Pollinations, gratuito). O navegador baixa a imagem direto do serviço.
+   */
+  private async createImage(conversationId: string, messageId: string, input: ChatInput, text: string, signal: AbortSignal, t0: number): Promise<ChatOutcome> {
+    let prompt = text;
+    const pick = await this.router.pick('fast').catch(() => null);
+    if (pick) {
+      try {
+        const r = await this.queue.run('interactive', () => this.ollama.chat({
+          model: pick.model, think: false, signal: AbortSignal.any([signal, AbortSignal.timeout(6000)]), options: { temperature: 0.4, num_predict: 120 },
+          messages: [{ role: 'user', content: `Transforme este pedido num prompt de geração de imagem em INGLÊS, detalhado (assunto, estilo, luz, composição), numa única linha. Responda só o prompt.\nPedido: ${text}` }],
+        }), signal);
+        const out = r.message.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        if (out && out.length < 900) prompt = out.replace(/^["']|["']$/g, '');
+      } catch { /* sem modelo ou demorou: usa o texto original */ }
+    }
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux&seed=${Math.floor(Math.random() * 1e9)}`;
+    return this.finishDirect(conversationId, messageId, input, `Aqui está a imagem que criei:\n\n![${text.slice(0, 80).replace(/[[\]]/g, '')}](${url})\n\n_Prompt usado: ${prompt.slice(0, 300).replace(/[_*]/g, ' ')}_`, t0);
   }
 
   /** Auditor do modo Profundo: julga só pelas evidências das ferramentas. */

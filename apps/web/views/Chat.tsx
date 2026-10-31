@@ -78,10 +78,10 @@ export function ChatView() {
               <div className="text-[12.5px] truncate">{c.title}</div>
               <div className="text-[10.5px] text-dim">{fmtAgo(c.updatedAt)}{c.origin === 'remote' ? ' · celular' : ''}</div>
             </button>
-            {api.mode === 'local' && (
+            {(api.mode === 'local' || api.cloud) && (
               <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex pr-1">
-                <button aria-label={c.pinned ? 'Desafixar' : 'Fixar'} onClick={() => act(() => api.req(`/api/conversations/${c.id}/pin`, { method: 'POST', json: { pinned: !c.pinned } }))} className="p-1.5 text-dim hover:text-orange-soft">{c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</button>
-                <button aria-label="Excluir conversa" onClick={() => confirm('Excluir esta conversa?') && act(async () => { await api.req(`/api/conversations/${c.id}`, { method: 'DELETE' }); if (chat.conversationId === c.id) await chat.open(null); })} className="p-1.5 text-dim hover:text-err"><Trash2 className="size-3.5" /></button>
+                <button aria-label={c.pinned ? 'Desafixar' : 'Fixar'} onClick={() => act(() => (api.pinConversation ? api.pinConversation(c.id, !c.pinned) : api.req(`/api/conversations/${c.id}/pin`, { method: 'POST', json: { pinned: !c.pinned } })))} className="p-1.5 text-dim hover:text-orange-soft">{c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</button>
+                <button aria-label="Excluir conversa" onClick={() => confirm('Excluir esta conversa?') && act(async () => { if (api.deleteConversation) await api.deleteConversation(c.id); else await api.req(`/api/conversations/${c.id}`, { method: 'DELETE' }); if (chat.conversationId === c.id) await chat.open(null); })} className="p-1.5 text-dim hover:text-err"><Trash2 className="size-3.5" /></button>
               </div>
             )}
           </div>
@@ -92,7 +92,7 @@ export function ChatView() {
 }
 
 function Home() {
-  const { status, visual, conn } = useJarvis();
+  const { api, status, visual, conn } = useJarvis();
   const chat = useChat();
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
@@ -102,12 +102,12 @@ function Home() {
     { href: '#/desktop', icon: MonitorCog, title: 'Desktop Control', text: 'Tarefas reais no Windows' },
     { href: '#/files', icon: FolderKanban, title: 'Arquivos', text: 'Pastas liberadas e projetos' },
   ];
-  const suggestions = ['Como está meu computador agora?', 'Quais arquivos mudaram hoje nas minhas pastas?', 'Crie uma planilha de tarefas da semana', 'Do que estávamos falando ontem?'];
+  const suggestions = api.cloud ? ['Crie uma imagem de uma cidade futurista ao pôr do sol', 'Me ajude a planejar minha semana', 'Explique como funciona a inteligência artificial', 'Escreva uma função em Python que ordena uma lista'] : ['Como está meu computador agora?', 'Quais arquivos mudaram hoje nas minhas pastas?', 'Crie uma imagem de um robô laranja futurista', 'Do que estávamos falando ontem?'];
   return (
     <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
       <JarvisCore state={conn === 'online' ? visual : 'offline'} size={168} />
       <h2 className="mt-2 font-display text-[26px] sm:text-[30px] font-semibold tracking-tight text-center">{greet}. <span className="accent-text">Como posso ajudar?</span></h2>
-      <p className="mt-2 text-[13px] text-dim text-center">{status?.device?.model ? `Modelo local ${status.device.model.replace(/:latest$/, '')} · modo ${MODE_INFO[chat.mode].label}` : conn === 'online' ? 'Nenhum modelo instalado — veja Configurações → Modelos' : 'Conectando ao Jarvis…'}</p>
+      <p className="mt-2 text-[13px] text-dim text-center">{api.cloud ? `IA na nuvem · modo ${MODE_INFO[chat.mode].label}${status?.online ? ' · seu PC está conectado' : ''}` : status?.device?.model ? `Modelo local ${status.device.model.replace(/:latest$/, '')} · modo ${MODE_INFO[chat.mode].label}` : conn === 'online' ? 'Nenhum modelo instalado — veja Configurações → Modelos' : 'Conectando ao Jarvis…'}</p>
       <div className="mt-7 grid grid-cols-2 lg:grid-cols-4 gap-2.5 w-full max-w-3xl">
         {tools.map((t) => (
           <a key={t.title} href={t.href} className="press surface rounded-xl p-3.5 hover:border-orange/30 hover:bg-white/[0.03] group">

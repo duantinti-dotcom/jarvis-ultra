@@ -45,6 +45,7 @@ const PIPER_URL = 'https://github.com/rhasspy/piper/releases/download/2023.11.14
 const PIPER_VOICES: Record<string, string> = {
   'pt_BR-faber-medium': 'https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx',
 };
+const WHISPER_TAGS = ['v1.8.2', 'v1.8.1', 'v1.7.6'];
 const WHISPER_MODELS: Record<string, string> = {
   base: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
   small: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
@@ -115,11 +116,19 @@ export class VoiceEngine {
       } else {
         const dir = path.join(this.dir, 'whisper');
         await fsp.mkdir(dir, { recursive: true });
-        const rel = (await (await fetch('https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest', { headers: { accept: 'application/vnd.github+json' } })).json()) as { assets?: { name: string; browser_download_url: string }[] };
-        const asset = rel.assets?.find((a) => a.name === 'whisper-bin-x64.zip');
-        if (!asset) throw new Error('Não encontrei o pacote whisper-bin-x64.zip na última versão do whisper.cpp.');
+        // Versões fixas com binário Windows verificado (as mais novas deixaram de publicar o zip x64).
         const zip = path.join(this.dir, 'tmp', 'whisper.zip');
-        await this.download(asset.browser_download_url, zip, component);
+        let lastErr: Error | null = null;
+        for (const tag of WHISPER_TAGS) {
+          try {
+            await this.download(`https://github.com/ggml-org/whisper.cpp/releases/download/${tag}/whisper-bin-x64.zip`, zip, component);
+            lastErr = null;
+            break;
+          } catch (e) {
+            lastErr = e as Error;
+          }
+        }
+        if (lastErr) throw new Error(`Não consegui baixar o whisper.cpp: ${lastErr.message}`);
         await this.unzip(zip, dir);
         // Alguns pacotes vêm em subpasta Release/: traz os binários para a raiz.
         for (const sub of ['Release', 'release']) {

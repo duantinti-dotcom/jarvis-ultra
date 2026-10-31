@@ -36,9 +36,9 @@ export const useChat = () => {
 const readMode = (): ReasoningMode => {
   try {
     const m = localStorage.getItem('jarvis.mode');
-    return m === 'fast' || m === 'deep' ? m : 'balanced';
+    return m === 'balanced' || m === 'deep' ? m : 'fast';
   } catch {
-    return 'balanced';
+    return 'fast';
   }
 };
 
@@ -47,7 +47,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<LiveMessage[]>([]);
   const [stage, setStage] = useState<Stage>({ kind: 'idle' });
-  const [mode, setModeState] = useState<ReasoningMode>('balanced');
+  const [mode, setModeState] = useState<ReasoningMode>('fast');
   const convRef = useRef<string | null>(null);
   const activeMsg = useRef<string | null>(null);
   const sentAt = useRef<number>(0);

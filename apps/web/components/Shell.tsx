@@ -104,7 +104,7 @@ function ShellInner({ device }: { device?: Device }) {
       </button>
       <div className="mt-4 flex-1 overflow-y-auto scroll-thin pl-3 -ml-3">{nav}</div>
       <div className="mt-3 space-y-2">
-        <ConnectionPill remote={remote} online={online} device={device} relay={status?.relay} />
+        <ConnectionPill remote={remote} online={online} pcOnline={!!status?.online} device={device} relay={status?.relay} />
         <EmergencyButton />
       </div>
     </>
@@ -143,7 +143,7 @@ function ShellInner({ device }: { device?: Device }) {
           </div>
         )}
         <main className={cx('flex-1 min-h-0', immersive ? 'overflow-hidden' : 'overflow-y-auto scroll-thin')}>
-          {remote && def.localOnly ? <LocalOnly label={def.label} /> : <Active />}
+          {remote && def.localOnly ? <LocalOnly label={def.label} pcOnline={!!status?.online} /> : <Active />}
         </main>
       </div>
 
@@ -191,11 +191,11 @@ function Brand() {
   );
 }
 
-function ConnectionPill({ remote, online, device, relay }: { remote: boolean; online: boolean; device?: Device; relay?: { enabled: boolean; connected: boolean } }) {
+function ConnectionPill({ remote, online, pcOnline, relay }: { remote: boolean; online: boolean; pcOnline?: boolean; device?: Device; relay?: { enabled: boolean; connected: boolean } }) {
   return (
     <div className="flex items-center gap-2 rounded-lg px-2.5 h-8 text-[11.5px] text-muted bg-white/[0.025]">
       {online ? <Wifi className="size-3.5 text-ok" /> : <WifiOff className="size-3.5 text-err" />}
-      <span className="truncate">{remote ? (device?.name ?? 'PC') : 'Núcleo local'} · {online ? 'conectado' : 'offline'}</span>
+      <span className="truncate">{remote ? `Nuvem · PC ${pcOnline ? 'online' : 'offline'}` : `Núcleo local · ${online ? 'conectado' : 'offline'}`}</span>
       {!remote && relay?.enabled && <Globe className={cx('ml-auto size-3.5', relay.connected ? 'text-orange' : 'text-dim')} aria-label={relay.connected ? 'acesso remoto conectado' : 'acesso remoto desconectado'} />}
     </div>
   );
@@ -216,13 +216,13 @@ function EmergencyButton() {
   );
 }
 
-function LocalOnly({ label }: { label: string }) {
+function LocalOnly({ label, pcOnline }: { label: string; pcOnline: boolean }) {
   return (
     <div className="h-full grid place-items-center p-6">
       <div className="max-w-md text-center">
         <MonitorCog className="size-9 mx-auto text-orange-soft" />
         <h2 className="mt-3 font-display text-lg">{label} roda no seu computador</h2>
-        <p className="mt-2 text-[13px] text-muted">Esta função usa arquivos, programas e o terminal do PC. Por segurança, ela fica disponível no aplicativo JARVIS instalado no Windows. Pelo site você conversa, fala por voz, acompanha tarefas, aprova ações e vê o histórico.</p>
+        <p className="mt-2 text-[13px] text-muted">Esta função usa arquivos, programas e o terminal do PC. Por segurança, ela fica disponível no aplicativo JARVIS instalado no Windows. Pelo site você conversa, cria imagens e fala por voz sem precisar do PC.{pcOnline ? ' Seu PC está online: peça tarefas no computador pelo chat.' : ''}</p>
       </div>
     </div>
   );
