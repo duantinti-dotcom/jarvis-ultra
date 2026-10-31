@@ -8,6 +8,7 @@ import { ModeSelector } from '@/components/ModeSelector';
 import { Button, cx } from '@/components/ui';
 import { openMic, browserRecognition, speakable, takeSentences, ptVoices, type MicHandle } from '@/lib/voice';
 import type { ReasoningMode } from '@/lib/types';
+import type { CoreEvent } from '@jarvis/contracts';
 
 type Phase = 'off' | 'starting' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 type VoiceStatus = { stt: { engine: string | null; detail: string }; tts: { engine: string | null; voices: string[] }; elevenlabs: { configured: boolean }; installable: { whisper: boolean; piper: boolean }; settings: { provider: string; speed: number } };
@@ -58,6 +59,11 @@ export function VoiceView() {
   const ttsLevel = useRef(0);
   const ttsFailed = useRef(false);
   const t = useRef<{ speechEnd?: number; transcript?: number; firstToken?: number; firstAudio?: number }>({});
+  /** Eventos que chegam antes de sabermos o id da resposta (a nuvem responde muito rápido). */
+  const awaiting = useRef(false);
+  const early = useRef<CoreEvent[]>([]);
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
   ph.current = phase;
   micOnRef.current = micOn;
   speakerRef.current = speakerOn;
@@ -67,8 +73,15 @@ export function VoiceView() {
   const sttAvailable = coreStt || (!isDesktopApp() && !!(typeof window !== 'undefined' && browserRecognition()));
 
   const setP = useCallback((p: Phase) => {
+    const prev = ph.current;
     ph.current = p;
     setPhase(p);
+    // Reconhecimento do navegador: pausa enquanto o Jarvis fala (evita eco) e volta ao ouvir.
+    const r = rec.current;
+    if (r) {
+      if (p === 'speaking' && prev !== 'speaking') { try { r.abort(); } catch {} }
+      if (p === 'listening' && prev !== 'listening') setTimeout(() => { if (ph.current === 'listening' && rec.current === r) { try { r.start(); } catch {} } }, 150);
+    }
     setVisual(p === 'off' ? 'idle' : p === 'speaking' ? 'speaking' : p === 'listening' ? 'listening' : 'thinking');
   }, [setVisual]);
 
@@ -140,8 +153,15 @@ export function VoiceView() {
   }, [pump]);
 
   // ---------- respostas em streaming ----------
+  const handleEvent = useRef<(e: CoreEvent) => void>(() => {});
   useEffect(() => onEvent((e) => {
-    if (!msgId.current) return;
+    if (!msgId.current) {
+      if (awaiting.current && (e.type === 'chat.delta' || e.type === 'chat.done' || e.type === 'chat.error')) early.current.push(e);
+      return;
+    }
+    handleEvent.current(e);
+  }), [onEvent]);
+  handleEvent.current = (e: CoreEvent) => {
     if (e.type === 'chat.delta' && e.messageId === msgId.current) {
       t.current.firstToken ??= performance.now();
       setTurns((ts) => ts.map((x, i) => (i === ts.length - 1 ? { ...x, jarvis: x.jarvis + e.text } : x)));
@@ -162,7 +182,7 @@ export function VoiceView() {
       if (local) void api.req('/api/voice/metrics', { method: 'POST', json: { sttMs: metrics.stt ?? null, ttftMs: metrics.ttft ?? null, firstAudioMs: metrics.firstAudio ?? null, totalMs: metrics.total ?? null } }).catch(() => {});
       if (!playing.current && !queue.current.length && ph.current !== 'off') setP('listening');
     }
-  }), [onEvent, enqueue, api, local, setP]);
+  };
 
   const handleTranscript = useCallback(async (text: string) => {
     const clean = text.replace(/\[.*?\]/g, '').trim();
@@ -170,13 +190,21 @@ export function VoiceView() {
     t.current.transcript = performance.now();
     setInterim('');
     setTurns((ts) => [...ts.slice(-20), { user: clean, jarvis: '', m: {} }]);
-    if (/^(encerrar|desligar|finalizar|tchau jarvis)\b/i.test(clean)) { void end(); return; }
+    if (/^(encerrar|desligar|finalizar) (a )?(chamada|liga[cç][aã]o|conversa)\b/i.test(clean)) { void end(); return; }
     setP('thinking');
     buf.current = '';
-    msgId.current = await chat.send(clean, undefined, mode);
-    if (!msgId.current) setP('listening');
+    early.current = [];
+    awaiting.current = true;
+    const id = await chatRef.current.send(clean, undefined, mode);
+    awaiting.current = false;
+    msgId.current = id;
+    if (!id) { if (ph.current !== 'off') setP('listening'); return; }
+    // Reprocessa o que chegou antes do id (respostas muito rápidas).
+    const pending = early.current.filter((e) => 'messageId' in e && e.messageId === id);
+    early.current = [];
+    for (const e of pending) handleEvent.current(e);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat, mode, setP]);
+  }, [mode, setP]);
 
   const start = useCallback(async () => {
     if (ph.current !== 'off') return;
@@ -226,8 +254,17 @@ export function VoiceView() {
           setInterim(tmp);
           if (fin && ph.current !== 'thinking') { t.current = { speechEnd: performance.now(), transcript: performance.now() }; void handleTranscript(fin); }
         };
-        r.onerror = (ev) => { if (!['no-speech', 'aborted'].includes(ev.error)) setError(ev.error === 'not-allowed' ? micError({ name: 'NotAllowedError' }) : `Reconhecimento de voz: ${ev.error}`); };
-        r.onend = () => { if (ph.current !== 'off') try { r.start(); } catch {} };
+        r.onerror = (ev) => {
+          if (['no-speech', 'aborted'].includes(ev.error)) return;
+          if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') setError(micError({ name: 'NotAllowedError' }));
+          else if (ev.error === 'network') setError('O reconhecimento de voz do navegador precisa de internet. Verifique a conexão.');
+          else setError(`Reconhecimento de voz: ${ev.error}`);
+        };
+        // O navegador encerra o reconhecimento após silêncio: religamos enquanto a chamada estiver aberta.
+        r.onend = () => {
+          if (ph.current === 'off' || ph.current === 'speaking' || rec.current !== r) return;
+          setTimeout(() => { if (ph.current !== 'off' && rec.current === r) { try { r.start(); } catch { /* já ativo */ } } }, 250);
+        };
         r.start();
       }
       setP('listening');
@@ -246,11 +283,12 @@ export function VoiceView() {
     rec.current = null;
     mic.current?.stop();
     mic.current = null;
-    if (msgId.current) chat.cancel();
+    if (msgId.current) chatRef.current.cancel();
     msgId.current = null;
+    awaiting.current = false;
     setLevel(0);
     setInterim('');
-  }, [chat, setP, stopSpeaking]);
+  }, [setP, stopSpeaking]);
 
   useEffect(() => {
     let raf = 0;
@@ -261,7 +299,10 @@ export function VoiceView() {
   useEffect(() => {
     if (location.hash.includes('auto=1') && !vs.loading) { history.replaceState(null, '', '#/voice'); void start(); }
   }, [vs.loading, start]);
-  useEffect(() => () => { void end(); }, [end]);
+  // Encerra só ao sair da tela (antes, qualquer mudança na conversa encerrava a chamada).
+  const endRef = useRef(end);
+  endRef.current = end;
+  useEffect(() => () => { void endRef.current(); }, []);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && ph.current !== 'off') void end();
