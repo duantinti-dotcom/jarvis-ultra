@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "A interface usa somente a API HTTP local do core; nenhum comando nativo é exposto ao JavaScript.",
+  "windows": ["main", "app"],
+  "permissions": []
+}

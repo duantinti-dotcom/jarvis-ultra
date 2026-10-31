@@ -1,0 +1,14 @@
+{
+  "name": "@jarvis/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "prepare-bundle": "node scripts/prepare.mjs",
+    "tauri": "tauri",
+    "build:win": "node scripts/prepare.mjs && tauri build --target x86_64-pc-windows-msvc",
+    "build:win-cross": "node scripts/prepare.mjs --target x86_64-pc-windows-gnu && tauri build --target x86_64-pc-windows-gnu --bundles nsis"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

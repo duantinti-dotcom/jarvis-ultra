@@ -1,0 +1,16 @@
+{
+  "name": "jarvis-ultra",
+  "private": true,
+  "version": "0.1.0",
+  "description": "JARVIS ULTRA — assistente pessoal de IA local com controle autorizado do Windows",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "core": "pnpm --filter @jarvis/core dev",
+    "web": "pnpm --filter @jarvis/web dev",
+    "bench": "pnpm --filter @jarvis/core bench"
+  }
+}

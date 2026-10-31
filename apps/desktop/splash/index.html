@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JARVIS ULTRA</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #06080c; color: #f5f7fa; font-family: 'Segoe UI', system-ui, sans-serif; }
+  body { display: grid; place-items: center; background: radial-gradient(800px 400px at 50% 30%, rgba(255,106,0,.12), transparent 60%), #06080c; }
+  .wrap { text-align: center; }
+  svg { width: 180px; height: 180px; }
+  .r1 { animation: spin 6s linear infinite; transform-origin: 50% 50%; }
+  .r2 { animation: spin 3s linear infinite reverse; transform-origin: 50% 50%; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  h1 { font-weight: 600; letter-spacing: .22em; font-size: 22px; margin: 18px 0 6px; text-shadow: 0 0 22px rgba(255,106,0,.55); }
+  h1 span { color: #ff6a00; }
+  p { color: #9ca5b5; font-size: 13px; margin: 0; min-height: 1.4em; }
+  .err { color: #ff5d67; max-width: 520px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <defs><radialGradient id="g"><stop offset="0" stop-color="#fff3e6"/><stop offset=".4" stop-color="#ff8c32"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient></defs>
+      <circle class="r1" cx="50" cy="50" r="40" fill="none" stroke="#ff6a00" stroke-width="1.5" stroke-dasharray="40 12"/>
+      <circle class="r2" cx="50" cy="50" r="30" fill="none" stroke="#ffb36b" stroke-width="1" stroke-dasharray="3 5"/>
+      <circle cx="50" cy="50" r="16" fill="url(#g)"/>
+    </svg>
+    <h1>JARVIS<span> ULTRA</span></h1>
+    <p id="msg">Iniciando o núcleo local…</p>
+  </div>
+  <script>
+    // O app nativo informa o progresso por eventos de janela.
+    window.__jarvisSplash = (text, isError) => { const m = document.getElementById('msg'); m.textContent = text; m.className = isError ? 'err' : ''; };
+  </script>
+</body>
+</html>
