@@ -5,18 +5,11 @@ import { ArrowUp, Square, Download, Plus, ExternalLink, Monitor, Tablet, Smartph
 import { useJarvis } from '@/lib/store';
 import { Markdown } from '@/components/Markdown';
 import { cx } from '@/components/ui';
-import { parseSegments, applySegments, buildPreview, makeZip, LOCAL_CODE_PROMPT, continuePrompt, type Segment } from '@/lib/studio';
-import type { CoreEvent } from '@/lib/types';
+import { parseSegments, applySegments, buildPreview, makeZip, type Segment } from '@/lib/studio';
+import { useStudio, setStudio, updateProject, studioSend, studioStop, onStudioSaveError, uid, type Msg, type Project } from '@/lib/studioStore';
 
 if (typeof window !== 'undefined') loader.config({ paths: { vs: `${location.origin}/monaco/vs` } });
 
-type Change = { name: string; kind: 'create' | 'update' | 'delete'; lines: number };
-type Msg = { id: string; role: 'user' | 'assistant'; content: string; auto?: boolean; changes?: Change[]; incomplete?: string[]; error?: string; ms?: number; streaming?: boolean };
-type Project = { id: string; name: string; files: Record<string, string>; partials?: Record<string, string>; messages: Msg[]; conversationId: string | null; updatedAt: number };
-
-const KEY = 'jarvis.studio.v1';
-const uid = () => (crypto.randomUUID?.() ?? String(Date.now() + Math.random()));
-const load = (): { projects: Project[]; current: string | null } => { try { return JSON.parse(localStorage.getItem(KEY) ?? '') as { projects: Project[]; current: string | null }; } catch { return { projects: [], current: null }; } };
 const LANG: Record<string, string> = { html: 'html', css: 'css', js: 'javascript', mjs: 'javascript', ts: 'typescript', json: 'json', md: 'markdown', svg: 'xml', txt: 'plaintext' };
 const langOf = (n: string) => LANG[n.split('.').pop()?.toLowerCase() ?? ''] ?? 'plaintext';
 const IDEAS = [
@@ -30,12 +23,10 @@ const IDEAS = [
 
 export function StudioView() {
   const { api, notify } = useJarvis();
-  const [state, setState] = useState<{ projects: Project[]; current: string | null }>({ projects: [], current: null });
-  const [ready, setReady] = useState(false);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  const state = useStudio();
+  const busy = state.busy;
+  const setState = (fn: (s: { projects: Project[]; current: string | null }) => { projects: Project[]; current: string | null }) => setStudio((s) => ({ ...s, ...fn(s) }));
   const [text, setText] = useState('');
-  const [busy, setBusy] = useState<{ id: string; started: number; msgId: string | null } | null>(null);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -47,17 +38,12 @@ export function StudioView() {
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => { const s = load(); setState(s.projects?.length ? s : { projects: [], current: null }); setReady(true); }, []);
-  useEffect(() => {
-    if (!ready) return;
-    const t = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { notify('warn', 'Sem espaço para salvar o projeto neste navegador. Baixe o .zip.'); } }, 400);
-    return () => clearTimeout(t);
-  }, [state, ready, notify]);
+  useEffect(() => { onStudioSaveError(() => notify('warn', 'Sem espaço para salvar o projeto neste navegador. Baixe o .zip.')); }, [notify]);
 
   const project = state.projects.find((p) => p.id === state.current) ?? null;
   const files = project?.files ?? {};
   const fileNames = Object.keys(files).sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
-  const update = useCallback((id: string, fn: (p: Project) => Project) => setState((s) => ({ ...s, projects: s.projects.map((p) => (p.id === id ? { ...fn(p), updatedAt: Date.now() } : p)) })), []);
+  const update = updateProject;
 
   const newProject = () => { setState((s) => { const p: Project = { id: uid(), name: 'Novo projeto', files: {}, messages: [], conversationId: null, updatedAt: Date.now() }; return { projects: [p, ...s.projects], current: p.id }; }); setOpenFile(null); setPage('index.html'); setErrors([]); setMenu(false); setTimeout(() => taRef.current?.focus(), 50); };
 
@@ -65,78 +51,15 @@ export function StudioView() {
   useEffect(() => { if (!busy) return; const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, [busy]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }); }, [project?.messages.length, busy?.msgId]);
 
-  // ---------------------------------------------------------------- enviar ao agente
-  const send = async (raw?: string, auto = 0, pidArg?: string) => {
+  // ---------------------------------------------------------------- enviar ao agente (roda fora da tela)
+  const send = (raw?: string) => {
     const t = (raw ?? text).trim();
-    if (!t || (busy && !auto)) return;
-    let p = pidArg ? stateRef.current.projects.find((x) => x.id === pidArg) ?? null : project;
-    if (!p) {
-      p = { id: uid(), name: t.replace(/\s+/g, ' ').slice(0, 40), files: {}, messages: [], conversationId: null, updatedAt: Date.now() };
-      const np = p;
-      setState((s) => ({ projects: [np, ...s.projects], current: np.id }));
-    } else if (!p.messages.length) {
-      const name = t.replace(/\s+/g, ' ').slice(0, 40);
-      update(p.id, (x) => ({ ...x, name }));
-    }
-    const pid = p.id;
-    const userMsg: Msg = { id: uid(), role: 'user', content: t, auto: auto > 0 };
-    const aid = uid();
-    update(pid, (x) => ({ ...x, messages: [...x.messages, userMsg, { id: aid, role: 'assistant', content: '', streaming: true }] }));
+    if (!t || busy) return;
     setText('');
     setErrors([]);
-    const started = Date.now();
-    setBusy({ id: pid, started, msgId: null });
-
-    let realId: string | null = null;
-    let full = '';
-    const early: CoreEvent[] = [];
-    let finished = false;
-    let cancelled = false;
-    let next: { name: string; partial: string } | null = null;
-    let resolveDone: () => void = () => {};
-    const done = new Promise<void>((r) => { resolveDone = r; });
-    const handle = (e: CoreEvent) => {
-      if (!('messageId' in e) || e.messageId !== realId) return;
-      if (e.type === 'chat.delta') {
-        full += e.text;
-        update(pid, (x) => ({ ...x, messages: x.messages.map((m) => (m.id === aid ? { ...m, content: full } : m)) }));
-      } else if (e.type === 'chat.done' || e.type === 'chat.error') {
-        finished = true;
-        const err = e.type === 'chat.error' ? e.error : undefined;
-        cancelled = e.type === 'chat.done' && e.metrics?.model === 'interrompido';
-        const cur = stateRef.current.projects.find((x) => x.id === pid);
-        const r = applySegments(cur?.files ?? {}, parseSegments(full), cur?.partials);
-        const first = r.incomplete[0];
-        next = first && !err ? { name: first, partial: r.partials[first]! } : null;
-        update(pid, (x) => {
-          return { ...x, files: r.files, partials: r.partials, messages: x.messages.map((m) => (m.id === aid ? { ...m, content: full, streaming: false, changes: r.changes, incomplete: r.incomplete, error: err, ms: Date.now() - started } : m)) };
-        });
-        resolveDone();
-      }
-    };
-    const unsub = api.subscribe((e) => { if (realId) handle(e); else early.push(e); });
-    try {
-      const fileMap = p.files;
-      const r = api.cloud
-        ? await api.chat(t, p.conversationId, { mode: 'balanced', code: { files: fileMap } })
-        : await api.chat(`${LOCAL_CODE_PROMPT}\n\n${Object.keys(fileMap).length ? `Arquivos atuais:\n${Object.entries(fileMap).map(([n, c]) => `\`\`\`${n.split('.').pop()} ${n}\n${c}\n\`\`\``).join('\n\n')}\n\n` : ''}Pedido: ${t}`, p.conversationId, { mode: 'balanced' });
-      realId = r.messageId;
-      setBusy({ id: pid, started, msgId: r.messageId });
-      update(pid, (x) => ({ ...x, conversationId: r.conversationId }));
-      for (const e of early.splice(0)) handle(e);
-      if (!finished) await done;
-    } catch (e) {
-      update(pid, (x) => ({ ...x, messages: x.messages.map((m) => (m.id === aid ? { ...m, streaming: false, error: (e as Error).message } : m)) }));
-    } finally {
-      unsub();
-      if (!next || cancelled || auto >= 5) setBusy(null);
-    }
-    // O provedor cortou um arquivo: continua sozinho de onde parou (até 5 vezes).
-    await new Promise((r) => setTimeout(r, 60));
-    const cont = next as { name: string; partial: string } | null;
-    if (cont && !cancelled && auto < 5) await send(continuePrompt(cont.name, cont.partial), auto + 1, pid);
+    void studioSend(api, t);
   };
-  const stop = () => { if (busy?.msgId) void api.cancelMessage(busy.msgId); };
+  const stop = () => studioStop(api);
 
   // ---------------------------------------------------------------- arquivo sendo escrito agora
   const live = useMemo(() => {

@@ -5,21 +5,35 @@ export type Segment =
   | { kind: 'file'; name: string; lang: string; content: string; done: boolean }
   | { kind: 'delete'; name: string };
 
-const OPEN = /^```([\w+-]*)[ \t]+([\w./-]*\w\.\w+)[ \t]*$/;
-const OPEN_ANY = /^```([\w+-]*)[ \t]*$/;
-const CLOSE = /^```[ \t]*$/;
+const FENCE = /^\s*```+\s*([^\n]*)$/;
+const CLOSE = /^\s*```+\s*$/;
+const FILE_RE = /([\w.\/-]*[\w-]\.(html?|css|m?js|jsx|ts|tsx|json|svg|md|txt|xml|webmanifest))\b/i;
+const LANG_FILE: Record<string, string> = { html: 'index.html', htm: 'index.html', css: 'styles.css', js: 'script.js', javascript: 'script.js', mjs: 'script.js' };
 
-/** Divide a resposta do modelo em texto, arquivos ("```lang nome") e remoções ("DELETE: nome"). */
+/** Nome de arquivo citado numa linha ("**index.html**", "### styles.css", "`script.js`:"...). */
+function nameIn(line: string | undefined): string | null {
+  if (!line || line.length > 120) return null;
+  const m = FILE_RE.exec(line.replace(/[*`#>:_]/g, ' '));
+  return m ? m[1]!.replace(/^\.?\//, '') : null;
+}
+
+/**
+ * Divide a resposta do modelo em texto, arquivos e remoções. Tolerante: aceita
+ * "```html index.html", "```html finalidade index.html", "```html:index.html",
+ * o nome na linha anterior ao bloco, ou só a linguagem (html → index.html etc.).
+ */
 export function parseSegments(src: string): Segment[] {
   const out: Segment[] = [];
   const lines = src.split('\n');
   let text: string[] = [];
+  const seen = new Set<string>();
   const flush = () => { const t = text.join('\n'); if (t.trim()) out.push({ kind: 'text', text: t }); text = []; };
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
-    const named = OPEN.exec(line);
-    const anon = !named ? OPEN_ANY.exec(line) : null;
-    if (named || anon) {
+    const f = FENCE.exec(line);
+    if (f && !CLOSE.test(line)) {
+      const info = f[1]!.trim();
+      const lang = (/^[\w+-]+/.exec(info)?.[0] ?? '').toLowerCase();
       const body: string[] = [];
       let done = false;
       let j = i + 1;
@@ -27,13 +41,23 @@ export function parseSegments(src: string): Segment[] {
         if (CLOSE.test(lines[j]!)) { done = true; break; }
         body.push(lines[j]!);
       }
-      let name = named?.[2];
-      const lang = (named?.[1] || anon?.[1] || '').toLowerCase();
-      // bloco sem nome: aceita só um documento HTML completo como index.html
-      if (!name && lang === 'html' && /<!doctype|<html/i.test(body.slice(0, 3).join('\n'))) name = 'index.html';
+      // nome: na própria cerca > na linha anterior (ignorando vazias) > comentário na 1ª linha > pela linguagem
+      let k = text.length - 1;
+      while (k >= 0 && !text[k]!.trim()) k--;
+      const prev = k >= 0 ? text[k] : undefined;
+      let name = nameIn(info.slice(lang.length)) ?? nameIn(info.includes('.') ? info : undefined) ?? nameIn(prev) ?? nameIn(/^\s*(<!--|\/\*|\/\/)/.test(body[0] ?? '') ? body[0] : undefined);
+      if (name && new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.continue`).test(info + ' ' + (prev ?? ''))) name += '.continue';
+      const code = ['html', 'htm', 'css', 'js', 'javascript', 'mjs'].includes(lang);
+      if (!name && code) {
+        const guess = LANG_FILE[lang]!;
+        // um 2º bloco da mesma linguagem sem nome é exemplo/trecho, não arquivo
+        if (!seen.has(guess) && (lang !== 'html' || /<(!doctype|html|head|body)/i.test(body.slice(0, 6).join('\n')))) name = guess;
+      }
       if (name) {
+        if (prev !== undefined && nameIn(prev) === name && prev.trim().length < 80) text.splice(k, 1);
         flush();
-        out.push({ kind: 'file', name: name.replace(/^\.?\//, ''), lang, content: body.join('\n') + (done ? '\n' : ''), done });
+        seen.add(name);
+        out.push({ kind: 'file', name, lang, content: body.join('\n') + (done ? '\n' : ''), done });
       } else {
         text.push(line, ...body);
         if (done) text.push(lines[j]!);

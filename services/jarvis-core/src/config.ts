@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
-export const CORE_VERSION = '0.2.5';
+export const CORE_VERSION = '0.2.6';
 
 function defaultDataDir(): string {
   if (process.env.JARVIS_DATA_DIR) return path.resolve(process.env.JARVIS_DATA_DIR);
