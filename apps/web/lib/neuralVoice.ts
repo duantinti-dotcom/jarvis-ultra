@@ -158,29 +158,24 @@ export function playJarvis(ctx: AudioContext, buffer: AudioBuffer, opts: { fx: b
   } else {
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 95;
     const low = ctx.createBiquadFilter(); low.type = 'lowshelf'; low.frequency.value = 180; low.gain.value = 2.5;
-    const pres = ctx.createBiquadFilter(); pres.type = 'peaking'; pres.frequency.value = 3000; pres.Q.value = 0.9; pres.gain.value = 4;
-    const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 7500; air.gain.value = 3;
+    const pres = ctx.createBiquadFilter(); pres.type = 'peaking'; pres.frequency.value = 3000; pres.Q.value = 0.9; pres.gain.value = 2.5;
+    const air = ctx.createBiquadFilter(); air.type = 'highshelf'; air.frequency.value = 7500; air.gain.value = 2;
     src.connect(hp); hp.connect(low); low.connect(pres); pres.connect(air);
-    const dry = ctx.createGain(); dry.gain.value = 0.86;
+    const dry = ctx.createGain(); dry.gain.value = 0.95;
     air.connect(dry); dry.connect(out);
     // dobra metálica (chorus curto modulado)
-    const dly = ctx.createDelay(0.05); dly.delayTime.value = 0.011;
+    const dly = ctx.createDelay(0.05); dly.delayTime.value = 0.009;
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.35;
-    const depth = ctx.createGain(); depth.gain.value = 0.0018;
+    const depth = ctx.createGain(); depth.gain.value = 0.0008;
     lfo.connect(depth); depth.connect(dly.delayTime); lfo.start();
     stopLfo.push(() => { try { lfo.stop(); } catch { /* */ } });
-    const wet = ctx.createGain(); wet.gain.value = 0.32;
+    const wet = ctx.createGain(); wet.gain.value = 0.16;
     air.connect(dly); dly.connect(wet); wet.connect(out);
-    // ressonância de pente (timbre "sintético")
-    const comb = ctx.createDelay(0.02); comb.delayTime.value = 0.0042;
-    const fb = ctx.createGain(); fb.gain.value = 0.38;
-    const combOut = ctx.createGain(); combOut.gain.value = 0.16;
-    air.connect(comb); comb.connect(fb); fb.connect(comb); comb.connect(combOut); combOut.connect(out);
     // ambiência
     const verb = ctx.createConvolver(); verb.buffer = impulse(ctx);
-    const vg = ctx.createGain(); vg.gain.value = 0.12;
+    const vg = ctx.createGain(); vg.gain.value = 0.07;
     air.connect(verb); verb.connect(vg); vg.connect(out);
-    nodes.push(hp, low, pres, air, dry, dly, lfo, depth, wet, comb, fb, combOut, verb, vg);
+    nodes.push(hp, low, pres, air, dry, dly, lfo, depth, wet, verb, vg);
   }
   let ended = false;
   const finish = () => {

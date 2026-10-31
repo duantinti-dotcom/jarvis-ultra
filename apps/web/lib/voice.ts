@@ -116,8 +116,10 @@ export function takeSentences(buf: string): { sentences: string[]; rest: string 
   const sentences: string[] = [];
   let rest = buf;
   const re = /^([\s\S]{12,}?[.!?…:;\n])(\s+|$)/;
+  // começa a falar mais cedo: corta também na vírgula quando o trecho já é longo
+  const comma = /^([\s\S]{40,}?,)(\s+)/;
   let m: RegExpMatchArray | null;
-  while ((m = rest.match(re))) {
+  while ((m = rest.match(re) ?? rest.match(comma))) {
     sentences.push(m[1]!.trim());
     rest = rest.slice(m[0].length);
   }

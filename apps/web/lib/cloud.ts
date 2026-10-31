@@ -97,3 +97,10 @@ export async function cloudPin(id: string, pinned: boolean) {
   const { error } = await supabase().from('jarvis_cloud_conversations').update({ pinned }).eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+let aiStatus: Promise<{ configured: boolean }> | null = null;
+/** A conta tem chave própria (modo turbo)? Consultado uma vez por sessão. */
+export function cloudAiStatus(refresh = false) {
+  if (!aiStatus || refresh) aiStatus = Promise.resolve(supabase().rpc('jarvis_ai_key_status')).then(({ data }) => (data as { configured: boolean }) ?? { configured: false }, () => ({ configured: false }));
+  return aiStatus;
+}

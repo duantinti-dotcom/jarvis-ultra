@@ -12,6 +12,7 @@ import { LabView } from './Lab';
 import { AgentsView } from './Agents';
 import { MonitorView } from './Monitor';
 import { supabase } from '@/lib/remote';
+import { cloudAiStatus } from '@/lib/cloud';
 
 const TABS = [
   { id: 'general', label: 'Geral', icon: SlidersHorizontal },
@@ -210,6 +211,7 @@ function Brain() {
       const { error } = await supabase().rpc('jarvis_set_ai_key', { p_key: k, p_provider: provider });
       if (error) throw new Error(error.message);
       setKey('');
+      void cloudAiStatus(true);
       notify('ok', k ? 'Chave salva. As próximas respostas já usam o modelo mais inteligente.' : 'Chave removida.');
       await st.reload();
     } catch (e) { notify('err', (e as Error).message); } finally { setBusy(false); }

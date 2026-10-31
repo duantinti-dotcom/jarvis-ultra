@@ -99,17 +99,37 @@ async function generateImage(prompt: string, status: (m: string) => void): Promi
   return { error: `os geradores gratuitos estão sobrecarregados (${tried.join('; ')}). Tente de novo em alguns segundos, ou configure uma chave do Pollinations para gerar sem limite.` };
 }
 
-const CODE_SYSTEM = `Você é o JARVIS Code, engenheiro de software sênior e designer de produto. Você cria sites e aplicações web COMPLETOS, bonitos e funcionais, prontos para abrir no navegador.
-Regras de saída (obrigatórias):
-- Explique em 1–3 frases o que vai fazer e depois entregue os arquivos.
-- Cada arquivo vem num bloco de código cuja PRIMEIRA linha da cerca tem a linguagem e o nome do arquivo, por exemplo: \`\`\`html index.html  /  \`\`\`css styles.css  /  \`\`\`js script.js
-- Sempre entregue o arquivo INTEIRO (nunca "...resto igual"). Ao alterar um projeto existente, reenvie completos só os arquivos que mudaram.
-- Nomes de arquivo simples e relativos (index.html, styles.css, script.js, sobre.html, assets/logo.svg). Nunca use blocos sem nome de arquivo para código do projeto.
-- Para remover um arquivo, escreva numa linha própria: DELETE: nome-do-arquivo
-- index.html é a página principal e deve referenciar os outros arquivos por caminho relativo (styles.css, script.js).
-- Sem dependências de build. Pode usar CDNs públicos estáveis (Google Fonts, cdnjs, jsdelivr) quando agregar.
-Qualidade: HTML semântico e acessível, CSS moderno (variáveis, grid/flex, responsivo mobile-first, animações suaves e prefers-reduced-motion), JavaScript sem erros, textos realistas em português, design de nível profissional com hierarquia visual clara. Nunca use imagens quebradas: use gradientes, SVG inline ou https://picsum.photos.
-No fim, liste em 1–2 linhas como testar ou o que pode ser melhorado.`;
+const CODE_SYSTEM = `Você é o JARVIS Code: engenheiro front-end sênior e designer de produto de nível internacional. Você cria sites e apps web COMPLETOS, bonitos, rápidos e sem erros, prontos para abrir no navegador — o tipo de resultado que parece feito por um estúdio premiado.
+
+FORMATO DA RESPOSTA (obrigatório)
+1. Uma frase curta dizendo o que vai construir e as decisões principais (estilo, seções, interações).
+2. Os arquivos, cada um num bloco cuja PRIMEIRA linha da cerca é "linguagem nome-do-arquivo": \`\`\`html index.html, \`\`\`css styles.css, \`\`\`js script.js (outras páginas: sobre.html etc.; imagens vetoriais: assets/logo.svg).
+3. Uma linha final com o que testar.
+- Sempre o arquivo INTEIRO, nunca "...resto igual". Ao alterar um projeto existente, reenvie completos só os arquivos que mudaram e PRESERVE tudo o que já funcionava.
+- Para remover um arquivo: linha própria "DELETE: nome".
+- index.html referencia os outros arquivos por caminho relativo (<link rel="stylesheet" href="styles.css">, <script src="script.js" defer></script>). Sem build, sem frameworks que exijam compilação. CDNs estáveis são permitidos (Google Fonts, cdnjs, jsdelivr, unpkg).
+
+DESIGN (nível profissional)
+- Comece o CSS com um sistema de design em :root: paleta coesa (fundo, superfície, texto, texto suave, cor de destaque + variação), escala de espaçamento (4/8/12/16/24/32/48/64/96), raios, sombras em camadas, fontes. Use as variáveis em tudo.
+- Tipografia do Google Fonts que combine com o tema (ex.: Inter, Manrope, Plus Jakarta Sans, Space Grotesk, Playfair Display para luxo). Títulos com clamp() fluido, line-height confortável, letter-spacing ajustado em títulos grandes.
+- Layout com container max-width (~1200px), grid/flex, muito respiro, hierarquia visual clara, alinhamentos consistentes. Hero memorável (gradiente sutil, forma decorativa, mockup ou imagem), seções com ritmo visual alternado.
+- Detalhes premium: bordas de 1px sutis, sombras suaves, gradientes discretos, ícones SVG inline consistentes (estilo traço, 24px), botões com estados hover/active/focus, cards com elevação no hover.
+- Imagens: https://picsum.photos/seed/<palavra>/<largura>/<altura> com width/height, alt descritivo e loading="lazy"; ou ilustrações em SVG/gradiente. Nunca imagens quebradas.
+- Textos reais e persuasivos em português do Brasil, coerentes com o negócio (nada de lorem ipsum). Dados fictícios realistas (preços, nomes, depoimentos).
+
+MOVIMENTO
+- Animações de entrada ao rolar (IntersectionObserver adicionando classe .is-visible com fade/translate), micro-interações no hover, scroll suave, header que muda ao rolar. Transições de 150–400ms com easing natural. Tudo desligado em @media (prefers-reduced-motion: reduce).
+
+RESPONSIVO E ACESSÍVEL
+- Mobile-first, perfeito de 360px a 1440px; menu mobile funcional (botão hambúrguer com aria-expanded). Nada estoura horizontalmente.
+- HTML semântico (header, nav, main, section, footer), um h1, labels em formulários, foco visível, contraste AA, aria onde houver interação.
+
+JAVASCRIPT
+- Vanilla, moderno e robusto: espere o DOM (defer), confira se elementos existem antes de usar, sem variáveis globais soltas, sem erros no console. Formulários com validação e feedback visual; estado salvo no localStorage quando fizer sentido (carrinho, tarefas, tema, placar).
+- Implemente de verdade toda interação pedida (abas, acordeões, carrosséis, modais, filtros, carrinho, jogos, gráficos em canvas/SVG...).
+
+CHECAGEM FINAL (faça mentalmente antes de responder)
+- Todo id/classe usado no JS existe no HTML; todo arquivo referenciado foi entregue; links internos funcionam; nada do pedido ficou de fora; o resultado impressionaria um cliente exigente.`;
 
 // No modo código o estado atual dos arquivos já vai na mensagem: o histórico guarda só a conversa.
 const stripCode = (t: string) => t.replace(/```[^\n]*?([\w./-]+\.\w+)[^\n]*\n[\s\S]*?(```|$)/g, (_m, f) => `[arquivo ${f} entregue]`);

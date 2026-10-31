@@ -1,9 +1,10 @@
 'use client';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Paperclip, ArrowUp, Square, Volume2, CheckCircle2, XCircle, Loader2, Trash2, Pin, PinOff, Copy, Check, RefreshCw, Pencil, Gauge, X, Code2, AudioLines, MonitorCog, FolderKanban } from 'lucide-react';
+import { Plus, Search, Paperclip, ArrowUp, Square, Volume2, CheckCircle2, XCircle, Loader2, Trash2, Pin, PinOff, Copy, Check, RefreshCw, Pencil, Gauge, X, Code2, AudioLines, MonitorCog, FolderKanban, Zap } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
 import { useChat, type LiveMessage, type Stage } from '@/lib/chat';
 import { Markdown } from '@/components/Markdown';
+import { cloudAiStatus } from '@/lib/cloud';
 import { ModeSelector, MODE_INFO } from '@/components/ModeSelector';
 import { JarvisCore } from '@/components/JarvisCore';
 import { Input, cx, fmtAgo } from '@/components/ui';
@@ -146,6 +147,8 @@ function StageLine({ stage }: { stage: Stage }) {
 
 function Composer() {
   const { api, notify } = useJarvis();
+  const [turbo, setTurbo] = useState<boolean | null>(null);
+  useEffect(() => { if (api.cloud) void cloudAiStatus().then((s) => setTurbo(s.configured)); }, [api]);
   const chat = useChat();
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -186,7 +189,13 @@ function Composer() {
   };
   return (
     <div className="px-3 sm:px-6 pb-4 pt-2">
-      <div className="max-w-3xl mx-auto surface-raised rounded-2xl focus-within:border-orange/35 transition-colors"
+      {turbo === false && (
+        <a href="#/settings/brain" className="enter max-w-3xl mx-auto mb-2 flex items-center gap-2.5 rounded-xl border border-orange/25 bg-orange/[0.06] hover:bg-orange/[0.1] px-3.5 py-2 text-[12.5px] text-muted hover:text-fg transition-colors">
+          <Zap className="size-4 shrink-0 text-orange-glow" />
+          <span>Modo grátis: a IA pública está lenta (5–15 s). <b className="text-orange-soft">Ative o modo turbo grátis</b> e o Jarvis responde em ~1 s e fica bem mais inteligente.</span>
+        </a>
+      )}
+      <div className="composer max-w-3xl mx-auto surface-raised rounded-2xl"
         onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) void attach(f); }}>
         {images.length > 0 && (
           <div className="flex gap-2 px-3 pt-3">
