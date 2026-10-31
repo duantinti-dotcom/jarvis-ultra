@@ -24,7 +24,7 @@ export function DesktopView() {
     const t = text;
     setText('');
     await chat.open(null);
-    await chat.send(t);
+    await chat.send(t, undefined, undefined, { local: true });
   };
   const grant = async (scope: string, on: boolean) => {
     try { await api.req('/api/permissions/scopes', { method: 'POST', json: { scope, origin: 'local', enabled: on } }); await perms.reload(); }

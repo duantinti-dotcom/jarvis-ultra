@@ -5,6 +5,10 @@ import { useJarvis, useAsync } from '@/lib/store';
 import { useChat, type LiveMessage, type Stage } from '@/lib/chat';
 import { Markdown } from '@/components/Markdown';
 import { cloudAiStatus } from '@/lib/cloud';
+import { queueStudioPrompt } from '@/lib/studioStore';
+import { CloudLogin } from '@/components/CloudLogin';
+
+const SITE_RE = /\b(cri[ae]r?|fa[çc]a|fazer|gere|gerar|monte|montar|desenvolva|desenvolver|construa|construir|programe|programar|quero)\b[^.?!\n]{0,60}\b(site|website|landing ?page|p[áa]gina (web|de vendas|inicial)|portf[óo]lio|loja (virtual|online)|app web|aplicativo web|sistema web|jogo (web|em html|no navegador))\b/i;
 import { ModeSelector, MODE_INFO } from '@/components/ModeSelector';
 import { JarvisCore } from '@/components/JarvisCore';
 import { Input, cx, fmtAgo } from '@/components/ui';
@@ -147,9 +151,10 @@ function StageLine({ stage }: { stage: Stage }) {
 
 function Composer() {
   const { api, notify } = useJarvis();
-  const [turbo, setTurbo] = useState<boolean | null>(null);
-  useEffect(() => { if (api.cloud) void cloudAiStatus().then((s) => setTurbo(s.configured)); }, [api]);
   const chat = useChat();
+  const [turbo, setTurbo] = useState<boolean | null>(null);
+  const [connect, setConnect] = useState(false);
+  useEffect(() => { if (api.cloud || chat.cloudOk) void cloudAiStatus().then((s) => setTurbo(s.configured)); }, [api, chat.cloudOk]);
   const [text, setText] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -158,10 +163,19 @@ function Composer() {
   useEffect(() => { taRef.current?.focus(); }, [chat.conversationId]);
 
   const send = async () => {
-    if ((!text.trim() && !images.length) || chat.busy) return;
+    if (!text.trim() && !images.length) return;
     const t = text, im = images;
+    const toCode = !im.length && SITE_RE.test(t) && !/\b(como|explica|explique|ensina|ensine|dica|tutorial|o que [ée]|qual|quanto custa)\b/i.test(t);
+    if (chat.busy && !toCode) return;
     setText('');
     setImages([]);
+    // "crie um site/landing page/portfólio…": quem faz isso de verdade é o Jarvis Code
+    if (toCode) {
+      queueStudioPrompt(t);
+      notify('ok', 'Abrindo o Jarvis Code para criar o site…');
+      location.hash = '#/code';
+      return;
+    }
     await chat.send(t, im.length ? im : undefined);
   };
   const attach = async (f: File) => {
@@ -189,6 +203,13 @@ function Composer() {
   };
   return (
     <div className="px-3 sm:px-6 pb-4 pt-2">
+      {api.mode === 'local' && !chat.cloudOk && (
+        <div className="max-w-3xl mx-auto mb-2 rounded-xl border border-orange/25 bg-orange/[0.06] px-3.5 py-2 text-[12.5px] text-muted">
+          {connect ? <CloudLogin title="Conectar à nuvem" text="Com sua conta Jarvis conectada, as conversas usam a IA da nuvem (rápida) e o PC fica para abrir apps, arquivos e tarefas no computador." onDone={() => setConnect(false)} /> : (
+            <button onClick={() => setConnect(true)} className="flex items-center gap-2.5 text-left hover:text-fg"><Zap className="size-4 shrink-0 text-orange-glow" /><span>O chat está usando só o modelo do seu PC (mais lento). <b className="text-orange-soft">Conecte sua conta Jarvis</b> para respostas rápidas da nuvem.</span></button>
+          )}
+        </div>
+      )}
       {turbo === false && (
         <a href="#/settings/brain" className="enter max-w-3xl mx-auto mb-2 flex items-center gap-2.5 rounded-xl border border-orange/25 bg-orange/[0.06] hover:bg-orange/[0.1] px-3.5 py-2 text-[12.5px] text-muted hover:text-fg transition-colors">
           <Zap className="size-4 shrink-0 text-orange-glow" />
@@ -227,7 +248,7 @@ function Composer() {
           </div>
         </div>
       </div>
-      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">{api.cloud ? "Jarvis na nuvem: conversa, programa e cria imagens. Confira informações importantes." : "O Jarvis roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes."}</p>
+      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">{api.cloud || chat.cloudOk ? "Jarvis na nuvem: conversa, programa e cria imagens. Ações no computador rodam no seu PC." : "O Jarvis roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes."}</p>
     </div>
   );
 }

@@ -11,7 +11,7 @@ export type Change = { name: string; kind: 'create' | 'update' | 'delete'; lines
 export type Msg = { id: string; role: 'user' | 'assistant'; content: string; auto?: boolean; changes?: Change[]; incomplete?: string[]; error?: string; ms?: number; streaming?: boolean };
 export type Project = { id: string; name: string; files: Record<string, string>; partials?: Record<string, string>; messages: Msg[]; conversationId: string | null; updatedAt: number };
 export type Busy = { id: string; started: number; msgId: string | null } | null;
-type State = { projects: Project[]; current: string | null; busy: Busy };
+type State = { projects: Project[]; current: string | null; busy: Busy; pending?: string | null };
 
 const KEY = 'jarvis.studio.v1';
 const MAX_CONT = 8; // o provedor grátis corta em ~1500 tokens: continua sozinho até 8 vezes
@@ -123,6 +123,12 @@ export async function studioSend(api: JarvisApi, text: string, auto = 0, pidArg?
   const cont = next as { name: string; partial: string } | null;
   if (cont && !cancelled && auto < MAX_CONT) return studioSend(api, continuePrompt(cont.name, cont.partial), auto + 1, pid);
   setStudio((s) => ({ ...s, busy: null }));
+}
+
+/** Pedido vindo do chat ("crie um site…"): a tela do Code envia assim que abrir. */
+export function queueStudioPrompt(text: string) {
+  load();
+  setStudio((s) => ({ ...s, current: null, pending: text }));
 }
 
 export function studioStop(api: JarvisApi) {

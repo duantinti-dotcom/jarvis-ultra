@@ -6,6 +6,9 @@ import { useJarvis } from '@/lib/store';
 import { Markdown } from '@/components/Markdown';
 import { cx } from '@/components/ui';
 import { parseSegments, applySegments, buildPreview, makeZip, type Segment } from '@/lib/studio';
+import { cloudBridge, hasCloudSession } from '@/lib/cloudBridge';
+import { CloudLogin } from '@/components/CloudLogin';
+import type { JarvisApi } from '@/lib/types';
 import { useStudio, setStudio, updateProject, studioSend, studioStop, onStudioSaveError, uid, type Msg, type Project } from '@/lib/studioStore';
 
 if (typeof window !== 'undefined') loader.config({ paths: { vs: `${location.origin}/monaco/vs` } });
@@ -27,6 +30,19 @@ export function StudioView() {
   const busy = state.busy;
   const setState = (fn: (s: { projects: Project[]; current: string | null }) => { projects: Project[]; current: string | null }) => setStudio((s) => ({ ...s, ...fn(s) }));
   const [text, setText] = useState('');
+  // Motor: no site é a própria nuvem; no app do PC usa a nuvem também (login da conta Jarvis).
+  const [engine, setEngine] = useState<JarvisApi | 'login' | null>(api.cloud ? api : null);
+  useEffect(() => {
+    if (api.cloud) { setEngine(api); return; }
+    void hasCloudSession().then((ok) => setEngine(ok ? cloudBridge() : 'login'));
+  }, [api]);
+  const ready = engine && engine !== 'login' ? engine : null;
+  useEffect(() => {
+    if (!ready || !state.pending || busy) return;
+    const t = state.pending;
+    setStudio((s) => ({ ...s, pending: null }));
+    void studioSend(ready, t);
+  }, [ready, state.pending, busy]);
   const [tab, setTab] = useState<'preview' | 'code'>('preview');
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [device, setDevice] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
@@ -54,12 +70,12 @@ export function StudioView() {
   // ---------------------------------------------------------------- enviar ao agente (roda fora da tela)
   const send = (raw?: string) => {
     const t = (raw ?? text).trim();
-    if (!t || busy) return;
+    if (!t || busy || !ready) return;
     setText('');
     setErrors([]);
-    void studioSend(api, t);
+    void studioSend(ready, t);
   };
-  const stop = () => studioStop(api);
+  const stop = () => { if (ready) studioStop(ready); };
 
   // ---------------------------------------------------------------- arquivo sendo escrito agora
   const live = useMemo(() => {
@@ -160,7 +176,7 @@ export function StudioView() {
         </header>
 
         <div className="flex-1 min-h-0 overflow-y-auto scroll-thin px-4 py-4 space-y-5">
-          {!project?.messages.length ? (
+          {engine === 'login' ? <CloudLogin onDone={() => setEngine(cloudBridge())} onLocal={() => setEngine(api)} /> : !project?.messages.length ? (
             <div className="enter pt-4">
               <div className="size-11 rounded-2xl grid place-items-center bg-gradient-to-br from-orange to-amber text-black shadow-[0_0_30px_rgba(255,109,10,.35)]"><Code2 className="size-5" /></div>
               <h2 className="mt-4 font-display text-[22px] leading-tight">O que vamos construir?</h2>
@@ -192,7 +208,7 @@ export function StudioView() {
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } if (e.key === 'Escape' && busy) stop(); }}
               className="w-full bg-transparent resize-none outline-none text-[13.5px] px-3.5 pt-3 placeholder:text-dim" />
             <div className="flex items-center gap-2 px-2.5 pb-2.5">
-              <span className="text-[11px] text-dim">{api.cloud ? 'IA na nuvem' : 'Modelo local do PC'} · Enter envia</span>
+              <span className="text-[11px] text-dim">{ready?.cloud ? 'IA na nuvem' : 'Modelo local do PC'} · Enter envia</span>
               {busy ? (
                 <button aria-label="Parar" onClick={stop} className="press ml-auto grid place-items-center size-8 rounded-xl bg-white/10 hover:bg-white/15"><Square className="size-3 fill-current" /></button>
               ) : (
@@ -330,3 +346,4 @@ function defineTheme(monaco: Parameters<NonNullable<React.ComponentProps<typeof 
     colors: { 'editor.background': '#0a0b0d', 'editor.lineHighlightBackground': '#14161a', 'editorLineNumber.foreground': '#3d424b', 'editorLineNumber.activeForeground': '#ffb35c', 'editorCursor.foreground': '#ff8a2b', 'editor.selectionBackground': '#ff6d0a33', 'minimap.background': '#0a0b0d' },
   });
 }
+

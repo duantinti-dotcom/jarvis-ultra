@@ -28,8 +28,8 @@ export function useSmoothText(target: string, streaming: boolean): string {
       if (backlog <= 0) { raf.current = null; last.current = 0; return; }
       // voltou de outra aba/janela com muito texto acumulado: mostra direto, sem replay lento
       if (backlog > 600 || (typeof document !== 'undefined' && document.hidden)) { pos.current = t.length; setShown(t); raf.current = null; last.current = 0; return; }
-      // ~ 90 caracteres/s no mínimo; esvazia o acumulado em ~350 ms quando a rede manda blocos grandes.
-      const step = Math.max(1, Math.round(Math.max(90 * (dt / 1000), backlog * (dt / 350))));
+      // rápido como o ChatGPT: ≥ 320 caracteres/s e esvazia o acumulado em ~160 ms.
+      const step = Math.max(1, Math.round(Math.max(320 * (dt / 1000), backlog * (dt / 160))));
       let next = Math.min(t.length, pos.current + step);
       // não corta pares substitutos (emoji)
       const c = t.charCodeAt(next - 1);
