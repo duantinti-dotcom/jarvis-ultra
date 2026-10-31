@@ -1,6 +1,6 @@
 [package]
 name = "jarvis-ultra"
-version = "0.2.3"
+version = "0.2.4"
 description = "JARVIS ULTRA — assistente pessoal de IA local"
 authors = ["JARVIS ULTRA"]
 edition = "2021"

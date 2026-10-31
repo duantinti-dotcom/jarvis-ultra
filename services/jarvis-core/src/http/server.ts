@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { putPreview, getPreview, PREVIEW_CSP } from './previews.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -53,6 +54,13 @@ export function createServer(core: Core, router: Router, token: string) {
       return;
     }
 
+    const pv = /^\/studio-preview\/([\w-]{20,40})$/.exec(url.pathname);
+    if (pv && req.method === 'GET') {
+      const html = getPreview(pv[1]!);
+      if (html == null) return void res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('preview expirado');
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': PREVIEW_CSP });
+      return void res.end(html);
+    }
     if (!url.pathname.startsWith('/api/')) return serveStatic(config.uiDir, url.pathname, res);
 
     if (url.pathname === '/api/health') return send(res, 200, { ok: true, name: 'jarvis-core', version: core.version });
@@ -64,6 +72,12 @@ export function createServer(core: Core, router: Router, token: string) {
     if (!authed(req, url.searchParams)) return send(res, 401, { error: 'não autenticado' });
 
     if (url.pathname === '/api/events') return sse(core, req, res);
+    if (url.pathname === '/api/studio/preview' && req.method === 'POST') {
+      const raw = await readRaw(req, 4_000_000);
+      let html = '';
+      try { html = String((JSON.parse(raw.toString('utf8')) as { html?: string }).html ?? ''); } catch { return send(res, 400, { error: 'JSON inválido' }); }
+      return send(res, 200, { url: `/studio-preview/${putPreview(html)}` });
+    }
 
     const m = router.match(req.method ?? 'GET', url.pathname);
     if (!m) return send(res, 404, { error: 'rota inexistente' });
@@ -129,7 +143,7 @@ function serveStatic(uiDir: string | null, pathname: string, res: http.ServerRes
   res.writeHead(200, {
     'content-type': MIME[ext] ?? 'application/octet-stream',
     'cache-control': /\/_next\/static\//.test(file.replace(/\\/g, '/')) ? 'public, max-age=31536000, immutable' : 'no-cache',
-    'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://image.pollinations.ai; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; font-src 'self' data:",
+    'content-security-policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src 'self'; img-src 'self' data: blob: https://image.pollinations.ai https://*.supabase.co; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; font-src 'self' data:",
   });
   fs.createReadStream(file).pipe(res);
 }

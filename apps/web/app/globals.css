@@ -111,3 +111,24 @@ body {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
 :root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before { animation: none !important; transition: none !important; }
+
+/* ---------- texto em streaming (revelação suave, estilo Claude) ---------- */
+@keyframes word-in { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: blur(0); } }
+@keyframes block-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes caret-glow { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.md-live .fw { animation: word-in .42s cubic-bezier(.2,.7,.2,1) both; }
+.md-live > * { animation: block-in .35s cubic-bezier(.2,.8,.2,1) both; }
+.md-live > :last-child:not(ul):not(ol):not(table):not(.relative)::after {
+  content: ''; display: inline-block; width: .55em; height: .55em; margin-left: .3em; border-radius: 9999px; vertical-align: middle;
+  background: var(--color-orange-soft); box-shadow: 0 0 10px rgb(255 140 40 / .7); animation: caret-glow 1s ease-in-out infinite;
+}
+/* entradas suaves no site todo */
+.enter { animation: block-in .4s cubic-bezier(.2,.8,.2,1) both; }
+.view-enter { animation: fade-up .45s cubic-bezier(.2,.8,.2,1) both; }
+.lift { transition: transform .18s ease, box-shadow .18s ease, background-color .18s ease, border-color .18s ease; }
+.lift:hover { transform: translateY(-1px); }
+/* Jarvis Code: indicador de trabalho estilo Claude Code */
+@keyframes star-spin { to { transform: rotate(360deg); } }
+.studio-star { display: inline-block; color: var(--color-orange-soft); animation: star-spin 2.4s linear infinite; text-shadow: 0 0 10px rgb(255 140 40 / .6); }
+@keyframes text-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.shimmer-text { background: linear-gradient(90deg, var(--color-muted) 30%, #ffd7a8 50%, var(--color-muted) 70%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: text-shine 2.2s linear infinite; }

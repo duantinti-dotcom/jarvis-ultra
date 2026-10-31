@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { SlidersHorizontal, Cpu, AudioLines, Database, Smartphone, FlaskConical, Bot, Activity, UserRound, Download, Loader2, KeyRound, Trash2, Check } from 'lucide-react';
+import { SlidersHorizontal, Cpu, AudioLines, Database, Smartphone, FlaskConical, Bot, Activity, UserRound, Download, Loader2, KeyRound, Trash2, Check, Sparkles, ExternalLink } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
 import { useChat } from '@/lib/chat';
 import { Panel, Button, Input, Select, Toggle, Badge, cx } from '@/components/ui';
@@ -15,6 +15,7 @@ import { supabase } from '@/lib/remote';
 
 const TABS = [
   { id: 'general', label: 'Geral', icon: SlidersHorizontal },
+  { id: 'brain', label: 'Inteligência', icon: Sparkles, remote: true },
   { id: 'models', label: 'Modelos', icon: Cpu, local: true },
   { id: 'voice', label: 'Voz', icon: AudioLines, local: true },
   { id: 'memory', label: 'Memória', icon: Database },
@@ -41,6 +42,7 @@ export function SettingsView() {
       </nav>
       <div className="flex-1 min-w-0 overflow-y-auto scroll-thin">
         {tab === 'general' && <General />}
+        {tab === 'brain' && <Brain />}
         {tab === 'models' && <ModelsView />}
         {tab === 'voice' && <VoiceSettings />}
         {tab === 'memory' && <MemoryView />}
@@ -186,6 +188,52 @@ function Account() {
         </Row>
         {code && <div className="mt-2 rounded-xl border border-amber/30 bg-amber/[0.06] p-3 text-[13px]">Guarde agora — não será mostrado de novo:<div className="mt-1 font-mono text-lg tracking-[0.2em] text-amber select-all">{code}</div></div>}
         <Row label="Sair"><div className="flex gap-2"><Button size="sm" onClick={() => supabase().auth.signOut()}>Deste aparelho</Button><Button size="sm" variant="danger" onClick={() => supabase().auth.signOut({ scope: 'global' })}>De todos</Button></div></Row>
+      </Panel>
+    </div>
+  );
+}
+
+/** Chave pessoal do provedor de IA: fica só no servidor (o navegador nunca lê de volta). */
+function Brain() {
+  const { notify } = useJarvis();
+  const st = useAsync(async () => {
+    const { data, error } = await supabase().rpc('jarvis_ai_key_status');
+    if (error) throw new Error(error.message);
+    return data as { configured: boolean; provider?: string; hint?: string; updated_at?: string };
+  }, []);
+  const [key, setKey] = useState('');
+  const [provider, setProvider] = useState('groq');
+  const [busy, setBusy] = useState(false);
+  const save = async (k: string) => {
+    setBusy(true);
+    try {
+      const { error } = await supabase().rpc('jarvis_set_ai_key', { p_key: k, p_provider: provider });
+      if (error) throw new Error(error.message);
+      setKey('');
+      notify('ok', k ? 'Chave salva. As próximas respostas já usam o modelo mais inteligente.' : 'Chave removida.');
+      await st.reload();
+    } catch (e) { notify('err', (e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <Panel title="Inteligência na nuvem" icon={<Sparkles className="size-4 text-orange-glow" />}>
+        <p className="text-[13px] text-muted">Sem chave, o Jarvis usa um modelo gratuito público (mais simples e mais lento, e corta respostas longas). Com uma chave gratuita da <b>Groq</b>, ele passa a usar o GPT-OSS 120B: muito mais inteligente, responde em menos de 1 segundo e cria sites inteiros sem cortar.</p>
+        <div className="mt-3 flex items-center gap-2 text-[13px]">
+          <span className={cx('size-2 rounded-full', st.data?.configured ? 'bg-ok' : 'bg-amber')} />
+          {st.loading ? 'Verificando…' : st.data?.configured ? <>Usando sua chave {st.data.provider} (…{st.data.hint})</> : 'Usando o modelo gratuito'}
+        </div>
+        <ol className="mt-4 space-y-1.5 text-[12.5px] text-muted list-decimal pl-5">
+          <li>Abra <a className="text-orange-soft hover:underline inline-flex items-center gap-1" href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys<ExternalLink className="size-3" /></a> e entre com sua conta Google (é grátis).</li>
+          <li>Clique em <b>Create API Key</b>, dê um nome (ex.: Jarvis) e copie a chave (começa com <code>gsk_</code>).</li>
+          <li>Cole aqui embaixo e salve.</li>
+        </ol>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Select value={provider} onChange={setProvider} options={[{ value: 'groq', label: 'Groq (grátis, recomendado)' }, { value: 'openrouter', label: 'OpenRouter' }, { value: 'openai', label: 'OpenAI' }]} />
+          <Input type="password" autoComplete="off" placeholder="gsk_..." value={key} onChange={(e) => setKey(e.target.value)} className="flex-1 min-w-[220px]" aria-label="Chave da API" />
+          <Button variant="primary" icon={<KeyRound className="size-3.5" />} disabled={key.trim().length < 20} loading={busy} onClick={() => save(key.trim())}>Salvar chave</Button>
+          {st.data?.configured && <Button variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={() => confirm('Remover sua chave? O Jarvis volta ao modelo gratuito.') && save('')}>Remover</Button>}
+        </div>
+        <p className="mt-3 text-[11.5px] text-dim">A chave é guardada no servidor do Jarvis com acesso bloqueado: nem este site consegue lê-la de volta. Só a função de IA a usa para responder você.</p>
       </Panel>
     </div>
   );

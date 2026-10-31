@@ -40,7 +40,7 @@ export function buildRoutes(core: Core) {
   // ---------- chat ----------
   r.post('/api/chat', async (c) => {
     const raw = await c.body();
-    const b = parse(z.object({ conversationId: z.string().max(64).nullable().optional(), text: z.string().max(16000).default(''), projectId: z.string().max(64).nullable().optional(), mode: z.enum(['fast', 'balanced', 'deep']).optional(), images: z.array(z.string().max(12_000_000)).max(4).optional() }), raw);
+    const b = parse(z.object({ conversationId: z.string().max(64).nullable().optional(), text: z.string().max(16000).default(''), projectId: z.string().max(64).nullable().optional(), mode: z.enum(['fast', 'balanced', 'deep']).optional(), images: z.array(z.string().max(12_000_000)).max(4).optional(), voice: z.boolean().optional() }), raw);
     const text = b.text ?? '';
     if (!text.trim() && !b.images?.length) throw new HttpError(400, 'Mensagem vazia.');
     const { conversationId, messageId } = core.brain.start({ ...b, text, origin: 'local' });

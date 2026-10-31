@@ -7,7 +7,7 @@ export type Conn = 'connecting' | 'online' | 'offline' | 'unauthenticated' | 'no
 export type ConversationSummary = { id: string; title: string; updatedAt: string; messageCount?: number; origin?: string; pinned?: boolean; projectId?: string | null };
 export type ChatMessage = { id: string; seq?: number; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; createdAt: string; metrics?: Record<string, unknown> | null; toolCalls?: unknown };
 export type ReasoningMode = 'fast' | 'balanced' | 'deep';
-export type ChatOptions = { mode?: ReasoningMode; images?: string[] };
+export type ChatOptions = { mode?: ReasoningMode; images?: string[]; code?: { files: Record<string, string> }; voice?: boolean };
 
 export type StatusView = {
   device: DeviceStatus | null;

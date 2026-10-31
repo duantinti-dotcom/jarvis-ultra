@@ -19,7 +19,7 @@ type ChatCtx = {
   stage: Stage;
   mode: ReasoningMode;
   setMode: (m: ReasoningMode) => void;
-  send: (text: string, images?: string[], modeOverride?: ReasoningMode) => Promise<string | null>;
+  send: (text: string, images?: string[], modeOverride?: ReasoningMode, extra?: { voice?: boolean }) => Promise<string | null>;
   open: (id: string | null) => Promise<void>;
   cancel: () => void;
   edit: (seq: number, text: string) => Promise<void>;
@@ -27,6 +27,7 @@ type ChatCtx = {
 };
 
 const C = createContext<ChatCtx | null>(null);
+const LAST = 'jarvis.lastConversation';
 export const useChat = () => {
   const c = useContext(C);
   if (!c) throw new Error('ChatProvider ausente');
@@ -105,6 +106,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }), [api, bump]);
 
   const open = useCallback(async (id: string | null) => {
+    try { if (id) localStorage.setItem(LAST, id); else localStorage.removeItem(LAST); } catch {}
     setConversationId(id);
     convRef.current = id;
     setStage({ kind: 'idle' });
@@ -116,7 +118,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
   }, [api]);
 
-  const send = useCallback(async (text: string, images?: string[], modeOverride?: ReasoningMode) => {
+  const send = useCallback(async (text: string, images?: string[], modeOverride?: ReasoningMode, extra?: { voice?: boolean }) => {
     const t = text.trim();
     if (!t && !images?.length) return null;
     setMessages((ms) => [...ms, { id: `tmp_${Date.now()}`, role: 'user', content: t, images, createdAt: new Date().toISOString() }]);
@@ -124,12 +126,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setStage({ kind: 'thinking' });
     sentAt.current = performance.now();
     try {
-      const r = await api.chat(t, convRef.current, { mode: modeOverride ?? mode, images });
+      const r = await api.chat(t, convRef.current, { mode: modeOverride ?? mode, images, voice: extra?.voice });
       activeMsg.current = r.messageId;
       if (convRef.current !== r.conversationId) {
         convRef.current = r.conversationId;
         setConversationId(r.conversationId);
       }
+      try { localStorage.setItem(LAST, r.conversationId); } catch {}
       bump();
       return r.messageId;
     } catch (e) {
@@ -163,6 +166,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages((ms) => ms.filter((m) => m.seq === undefined || m.seq < lastUser.seq!));
     await send(lastUser.content);
   }, [api, messages, send]);
+
+  // Continua de onde parou: a última conversa reabre ao voltar ao site/app (não some ao fechar a janela).
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    let last: string | null = null;
+    try { last = localStorage.getItem(LAST); } catch {}
+    if (last && !convRef.current && !location.hash.includes('new=1')) void open(last).then(() => {}, () => {});
+  }, [open]);
 
   const busy = stage.kind !== 'idle' || messages.some((m) => m.streaming);
   const value = useMemo(() => ({ conversationId, messages, busy, stage, mode, setMode, send, open, cancel, edit, regenerate }), [conversationId, messages, busy, stage, mode, setMode, send, open, cancel, edit, regenerate]);

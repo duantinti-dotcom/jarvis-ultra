@@ -50,7 +50,10 @@ const VOICE_RE = /\b(ligue|ligar|ative|ativar|inicie|iniciar|comece|come[cç]ar)
 export const IMAGE_RE = /\b(crie|cria|criar|gere|gera|gerar|fa[cç]a|fazer|desenhe|desenha|desenhar|imagine)\b[^.?!]{0,60}\b(imagem|imagens|foto|desenho|ilustra[cç][aã]o|logo|logotipo|arte|wallpaper|papel de parede|figura|retrato|pintura)\b/i;
 const SMALLTALK_RE = /^\s*(jarvis[,!\s]*)?(oi|ol[aá]|e a[ií]|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tudo bem\??|como vai\??|tchau|at[eé] logo)[\s!.?]*$/i;
 
-export type ChatInput = { conversationId?: string | null; text: string; origin: RequestOrigin; projectId?: string | null; mode?: ReasoningMode; images?: string[] };
+/** Conversa por voz: respostas faladas, curtas e naturais. */
+export const VOICE_NOTE = 'Modo voz: a resposta será FALADA. Responda como numa conversa real, em 1 a 3 frases curtas, naturais e calorosas, sem Markdown, listas, emojis ou símbolos. Nada de "como IA, eu...". Se precisar de detalhes, ofereça continuar.';
+
+export type ChatInput = { conversationId?: string | null; text: string; origin: RequestOrigin; projectId?: string | null; mode?: ReasoningMode; images?: string[]; voice?: boolean };
 
 /** O que cada modo muda de fato no pipeline. */
 export const MODES: Record<ReasoningMode, { label: string; classifier: 'never' | 'auto' | 'always'; semanticMemory: boolean; maxIterations: number; numPredict: number; think: boolean; temperature: number; audit: boolean; modelClass: 'fast' | 'tools' | 'deep' }> = {
@@ -172,7 +175,7 @@ export class Brain {
     // o que muda a cada turno vai junto da mensagem do usuário.
     const envBlock = `\n\nAmbiente: ${process.platform === 'win32' ? 'Windows' : process.platform}.\nPastas autorizadas: ${roots.map((r) => `${r.path} (${r.access === 'readwrite' ? 'leitura e escrita' : 'somente leitura'})`).join('; ') || 'nenhuma'}.\nAplicativos autorizados: ${this.perms.apps().filter((a) => input.origin !== 'remote' || a.remote).map((a) => a.name).join(', ') || 'nenhum'}.`;
     const system: ChatMessage = { role: 'system', content: `${BASE_SYSTEM_PROMPT}\n\nVocê está atuando como ${agent.name}: ${agent.description} ${agent.instructions}${envBlock}` };
-    const dynamic = `[Contexto: ${new Date().toLocaleString('pt-BR')} · origem ${input.origin === 'remote' ? 'site remoto (celular/navegador)' : 'aplicativo local'}${memoryBlock}${procBlock}]`;
+    const dynamic = `[Contexto: ${new Date().toLocaleString('pt-BR')} · origem ${input.origin === 'remote' ? 'site remoto (celular/navegador)' : 'aplicativo local'}${input.voice ? `\n${VOICE_NOTE}` : ''}${memoryBlock}${procBlock}]`;
     const userMsg: ChatMessage = { role: 'user', content: `${dynamic}\n\n${text}` };
 
     const useTools = intent.needs_tools || intent.kind === 'action' || intent.kind === 'plan_request' && agent.tools.length > 0;

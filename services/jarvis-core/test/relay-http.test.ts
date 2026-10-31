@@ -128,6 +128,17 @@ describe('API local', () => {
     const r = await new Promise<number>((resolve) => http.get(`${base}/api/health`, { headers: { host: 'evil.com' } }, (res) => resolve(res.statusCode!)));
     expect(r).toBe(421);
   });
+  it('preview do Jarvis Code: só com token para criar, servido isolado (CSP sandbox)', async () => {
+    expect((await fetch(`${base}/api/studio/preview`, { method: 'POST', body: '{"html":"x"}' })).status).toBe(401);
+    const r = await fetch(`${base}/api/studio/preview`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ html: '<h1>Oi</h1>' }) });
+    const { url } = (await r.json()) as { url: string };
+    expect(url).toMatch(/^\/studio-preview\/[\w-]{20,40}$/);
+    const page = await fetch(`${base}${url}`);
+    expect(await page.text()).toBe('<h1>Oi</h1>');
+    expect(page.headers.get('content-security-policy')).toMatch(/^sandbox allow-scripts/);
+    expect((await fetch(`${base}/studio-preview/inexistente-0000000000000`)).status).toBe(404);
+  });
+
   it('bootstrap do token só para a própria interface', async () => {
     expect((await fetch(`${base}/api/bootstrap`)).status).toBe(403);
   });

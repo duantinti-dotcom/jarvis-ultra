@@ -11,7 +11,7 @@ import { Onboarding } from './Onboarding';
 
 const loading = () => <div className="h-full grid place-items-center"><Loader2 className="size-5 animate-spin text-orange" /></div>;
 const ChatView = dynamic(() => import('@/views/Chat').then((m) => m.ChatView), { loading });
-const CodeView = dynamic(() => import('@/views/Code').then((m) => m.CodeView), { loading, ssr: false });
+const CodeView = dynamic(() => import('@/views/CodeHub').then((m) => m.CodeHub), { loading, ssr: false });
 const VoiceView = dynamic(() => import('@/views/Voice').then((m) => m.VoiceView), { loading, ssr: false });
 const DesktopView = dynamic(() => import('@/views/Desktop').then((m) => m.DesktopView), { loading });
 const FilesView = dynamic(() => import('@/views/Files').then((m) => m.FilesView), { loading });
@@ -22,7 +22,7 @@ const SettingsView = dynamic(() => import('@/views/Settings').then((m) => m.Sett
 type ViewDef = { id: string; label: string; hint: string; icon: ComponentType<{ className?: string }>; C: ComponentType; localOnly?: boolean; group: 'main' | 'system' };
 export const VIEWS: ViewDef[] = [
   { id: 'chat', label: 'Jarvis Chat', hint: 'Converse, pergunte e peça tarefas', icon: MessageSquare, C: ChatView, group: 'main' },
-  { id: 'code', label: 'Jarvis Code', hint: 'Programe nos seus projetos', icon: Code2, C: CodeView, localOnly: true, group: 'main' },
+  { id: 'code', label: 'Jarvis Code', hint: 'Crie sites completos com preview ao vivo', icon: Code2, C: CodeView, group: 'main' },
   { id: 'voice', label: 'Jarvis Voice', hint: 'Converse por voz', icon: AudioLines, C: VoiceView, group: 'main' },
   { id: 'desktop', label: 'Desktop Control', hint: 'Tarefas reais no Windows', icon: MonitorCog, C: DesktopView, localOnly: true, group: 'main' },
   { id: 'files', label: 'Arquivos e projetos', hint: 'Pastas liberadas e projetos', icon: FolderKanban, C: FilesView, localOnly: true, group: 'main' },
@@ -143,7 +143,7 @@ function ShellInner({ device }: { device?: Device }) {
           </div>
         )}
         <main className={cx('flex-1 min-h-0', immersive ? 'overflow-hidden' : 'overflow-y-auto scroll-thin')}>
-          {remote && def.localOnly ? <LocalOnly label={def.label} pcOnline={!!status?.online} /> : <Active />}
+          {remote && def.localOnly ? <LocalOnly label={def.label} pcOnline={!!status?.online} /> : <div key={view} className="h-full view-enter"><Active /></div>}
         </main>
       </div>
 

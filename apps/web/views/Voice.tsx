@@ -7,8 +7,11 @@ import { VoiceSphere, type SphereState } from '@/components/VoiceSphere';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button, cx } from '@/components/ui';
 import { openMic, browserRecognition, speakable, takeSentences, ptVoices, type MicHandle } from '@/lib/voice';
+import { prepareNeuralVoice, synthNeural, playJarvis, maleVoice, onNeuralState, neuralState, type NeuralState } from '@/lib/neuralVoice';
 import type { ReasoningMode } from '@/lib/types';
 import type { CoreEvent } from '@jarvis/contracts';
+
+const GREETINGS = ['Às suas ordens, senhor.', 'Estou aqui. Em que posso ajudar?', 'Sistemas online. Pode falar.', 'Olá. O que vamos fazer hoje?'];
 
 type Phase = 'off' | 'starting' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 type VoiceStatus = { stt: { engine: string | null; detail: string }; tts: { engine: string | null; voices: string[] }; elevenlabs: { configured: boolean }; installable: { whisper: boolean; piper: boolean }; settings: { provider: string; speed: number } };
@@ -18,6 +21,8 @@ const isDesktopApp = () => typeof window !== 'undefined' && !!window.__JARVIS__;
 
 /** Melhor voz do navegador disponível (vozes neurais/online soam bem menos robóticas). */
 function bestBrowserVoice() {
+  const male = maleVoice(ptVoices());
+  if (male) return male;
   const vs = ptVoices().filter((v) => v.lang.toLowerCase().startsWith('pt'));
   const score = (v: SpeechSynthesisVoice) => (/natural|neural|online|premium|enhanced/i.test(v.name) ? 10 : 0) + (v.lang === 'pt-BR' ? 3 : 0) + (/francisca|antonio|thalita|luciana|felipe/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1);
   return vs.sort((a, b) => score(b) - score(a))[0] ?? null;
@@ -53,7 +58,22 @@ export function VoiceView() {
   const speakerRef = useRef(true);
   const msgId = useRef<string | null>(null);
   const buf = useRef('');
-  const queue = useRef<string[]>([]);
+  const queue = useRef<{ text: string; audio: Promise<AudioBuffer> | null }[]>([]);
+  const outCtx = useRef<AudioContext | null>(null);
+  const stopper = useRef<(() => void) | null>(null);
+  const [fx, setFx] = useState(true);
+  const fxRef = useRef(true);
+  fxRef.current = fx;
+  const [neural, setNeural] = useState<NeuralState>(() => neuralState());
+  // Site: voz neural masculina no navegador (o app do PC usa o Piper local).
+  const useNeural = !local && !isDesktopApp();
+  useEffect(() => {
+    try { setFx(localStorage.getItem('jarvis.voice.fx') !== '0'); } catch {}
+    if (!useNeural) return;
+    const off = onNeuralState(setNeural);
+    prepareNeuralVoice().catch(() => {});
+    return off;
+  }, [useNeural]);
   const playing = useRef(false);
   const source = useRef<AudioBufferSourceNode | null>(null);
   const ttsLevel = useRef(0);
@@ -90,10 +110,24 @@ export function VoiceView() {
     queue.current = [];
     try { source.current?.stop(); } catch {}
     source.current = null;
+    stopper.current?.();
+    stopper.current = null;
     if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     playing.current = false;
     ttsLevel.current = 0;
   }, []);
+
+  /** Gera o áudio da frase (em paralelo com a fala anterior). null = usar a voz do sistema. */
+  const render = useCallback((text: string): Promise<AudioBuffer> | null => {
+    const ctx = outCtx.current;
+    if (!ctx || ttsFailed.current) return null;
+    if (coreTts && local) {
+      return fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text }) })
+        .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}`); return ctx.decodeAudioData(await r.arrayBuffer()); });
+    }
+    if (useNeural && neuralState().status === 'ready') return synthNeural(ctx, text, vs.data?.settings.speed ?? 1.05);
+    return null;
+  }, [api, coreTts, local, useNeural, vs.data]);
 
   const pump = useCallback(async () => {
     if (playing.current) return;
@@ -105,52 +139,48 @@ export function VoiceView() {
     if (!speakerRef.current) { void pump(); return; }
     playing.current = true;
     if (ph.current !== 'off') setP('speaking');
-    t.current.firstAudio ??= performance.now();
-    const done = () => { playing.current = false; ttsLevel.current = 0; void pump(); };
+    const done = () => { playing.current = false; ttsLevel.current = 0; stopper.current = null; void pump(); };
+    const browserSpeak = () => {
+      const u = new SpeechSynthesisUtterance(next.text);
+      u.lang = 'pt-BR';
+      u.rate = vs.data?.settings.speed ?? 1.04;
+      const v = bestBrowserVoice();
+      if (v) u.voice = v;
+      // sem voz masculina instalada: deixa a voz disponível mais grave
+      u.pitch = v && maleVoice([v]) ? 0.92 : 0.7;
+      u.onboundary = () => { ttsLevel.current = 0.65; setTimeout(() => (ttsLevel.current = 0.2), 110); };
+      u.onend = done;
+      u.onerror = done;
+      t.current.firstAudio ??= performance.now();
+      speechSynthesis.speak(u);
+    };
+    const audio = next.audio ?? render(next.text);
+    if (!audio || !outCtx.current) { browserSpeak(); return; }
     try {
-      if (coreTts && !ttsFailed.current && mic.current && local) {
-        const r = await fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: next }) });
-        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}`);
-        const ctx = mic.current.ctx;
-        const audio = await ctx.decodeAudioData(await r.arrayBuffer());
-        const src = ctx.createBufferSource();
-        const an = ctx.createAnalyser();
-        an.fftSize = 512;
-        src.buffer = audio;
-        src.connect(an);
-        an.connect(ctx.destination);
-        const arr = new Uint8Array(an.frequencyBinCount);
-        const meter = setInterval(() => { an.getByteTimeDomainData(arr); let s = 0; for (const v of arr) s += ((v - 128) / 128) ** 2; ttsLevel.current = Math.min(1, Math.sqrt(s / arr.length) * 4); }, 40);
-        src.onended = () => { clearInterval(meter); done(); };
-        source.current = src;
-        src.start();
-      } else {
-        const u = new SpeechSynthesisUtterance(next);
-        u.lang = 'pt-BR';
-        u.rate = vs.data?.settings.speed ?? 1.02;
-        const v = bestBrowserVoice();
-        if (v) u.voice = v;
-        u.onboundary = () => { ttsLevel.current = 0.65; setTimeout(() => (ttsLevel.current = 0.2), 110); };
-        u.onend = done;
-        u.onerror = done;
-        speechSynthesis.speak(u);
-      }
+      const buf = await audio;
+      if (!playing.current) return; // interrompido enquanto gerava
+      const ctx = outCtx.current;
+      if (ctx.state === 'suspended') await ctx.resume();
+      t.current.firstAudio ??= performance.now();
+      const h = playJarvis(ctx, buf, { fx: fxRef.current, onEnd: () => { clearInterval(meter); done(); } });
+      const arr = new Uint8Array(h.analyser.frequencyBinCount);
+      const meter = setInterval(() => { h.analyser.getByteTimeDomainData(arr); let s = 0; for (const v of arr) s += ((v - 128) / 128) ** 2; ttsLevel.current = Math.min(1, Math.sqrt(s / arr.length) * 4); }, 40);
+      stopper.current = () => { clearInterval(meter); h.stop(); };
     } catch (e) {
-      // Falhou a voz local/premium: avisa uma vez e segue com a voz do sistema.
+      // Falhou a voz principal: avisa uma vez e segue com a voz do sistema.
       if (!ttsFailed.current) notify('warn', `Voz principal indisponível (${(e as Error).message}). Usando a voz do sistema.`);
       ttsFailed.current = true;
-      playing.current = false;
-      queue.current.unshift(next);
-      void pump();
+      browserSpeak();
     }
-  }, [api, coreTts, local, notify, setP, vs.data]);
+  }, [render, notify, setP, vs.data]);
 
   const enqueue = useCallback((s: string) => {
     const clean = speakable(s);
     if (!clean) return;
-    queue.current.push(clean);
+    // já começa a gerar o áudio enquanto a frase anterior toca (menos espera entre frases)
+    queue.current.push({ text: clean, audio: speakerRef.current ? render(clean) : null });
     void pump();
-  }, [pump]);
+  }, [pump, render]);
 
   // ---------- respostas em streaming ----------
   const handleEvent = useRef<(e: CoreEvent) => void>(() => {});
@@ -195,7 +225,7 @@ export function VoiceView() {
     buf.current = '';
     early.current = [];
     awaiting.current = true;
-    const id = await chatRef.current.send(clean, undefined, mode);
+    const id = await chatRef.current.send(clean, undefined, mode, { voice: true });
     awaiting.current = false;
     msgId.current = id;
     if (!id) { if (ph.current !== 'off') setP('listening'); return; }
@@ -213,6 +243,7 @@ export function VoiceView() {
     if (!sttAvailable) return setError(isDesktopApp() ? 'O reconhecimento de voz local ainda não está instalado. Clique em “Instalar reconhecimento de voz” abaixo (cerca de 150 MB).' : 'Este navegador não oferece reconhecimento de voz. Use o Chrome/Edge ou o app do computador.');
     setP('starting');
     ttsFailed.current = false;
+    try { outCtx.current ??= new AudioContext(); void outCtx.current.resume(); } catch { outCtx.current = null; }
     try {
       mic.current = await openMic({
         // Durante a fala do Jarvis o limiar sobe bastante: só voz humana próxima interrompe (evita eco).
@@ -268,7 +299,7 @@ export function VoiceView() {
         r.start();
       }
       setP('listening');
-      enqueue('Pode falar.');
+      enqueue(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]!);
     } catch (e) {
       setError(micError(e));
       void end();
@@ -359,10 +390,26 @@ export function VoiceView() {
           <EngineCard title="Ouvir (reconhecimento)" ok={coreStt || (!isDesktopApp() && sttAvailable)}
             detail={coreStt ? `Local: ${vs.data?.stt.engine}` : !local ? 'Reconhecimento do navegador' : isDesktopApp() ? 'Não instalado' : 'Reconhecimento do navegador'}
             action={local && vs.data?.installable.whisper ? <InstallBtn st={installs.data?.whisper} onClick={() => install('whisper')} label="Instalar reconhecimento de voz" /> : null} />
-          <EngineCard title="Falar (voz do Jarvis)" ok={coreTts}
-            detail={vs.data?.elevenlabs.configured ? 'ElevenLabs (voz premium)' : vs.data?.tts.engine ? `Piper local · ${vs.data.tts.voices[0] ?? ''}` : `Voz do sistema${bestBrowserVoice() ? ` · ${bestBrowserVoice()!.name}` : ''}`}
-            action={local && vs.data?.installable.piper ? <InstallBtn st={installs.data?.piper} onClick={() => install('piper')} label="Instalar voz natural" /> : local ? <a href="#/settings/voice" className="text-[12px] text-orange-soft hover:underline">Ajustar voz</a> : null} />
+          <EngineCard title="Falar (voz do Jarvis)" ok={coreTts || (useNeural && neural.status === 'ready')}
+            detail={vs.data?.elevenlabs.configured ? 'ElevenLabs (voz premium)' : vs.data?.tts.engine ? `Piper local · ${vs.data.tts.voices[0] ?? ''}` : useNeural ? (neural.status === 'ready' ? 'Voz neural masculina JARVIS (no navegador)' : neural.status === 'loading' ? `Baixando a voz JARVIS… ${neural.progress}% (uma única vez)` : neural.status === 'error' ? `Voz neural indisponível agora (sem acesso ao servidor da voz); usando ${bestBrowserVoice()?.name ?? 'a voz do sistema'}` : 'Preparando a voz JARVIS…') : `Voz do sistema${bestBrowserVoice() ? ` · ${bestBrowserVoice()!.name}` : ''}`}
+            action={
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-[12px] text-muted cursor-pointer select-none">
+                  <input type="checkbox" checked={fx} onChange={(e) => { setFx(e.target.checked); try { localStorage.setItem('jarvis.voice.fx', e.target.checked ? '1' : '0'); } catch {} }} className="accent-[#ff8a2b]" />
+                  Timbre tecnológico (efeito JARVIS)
+                </label>
+                {useNeural && neural.status === 'error' && <button className="text-[12px] text-orange-soft hover:underline" onClick={() => void prepareNeuralVoice().catch(() => {})}>Tentar de novo</button>}
+                {local && vs.data?.installable.piper ? <InstallBtn st={installs.data?.piper} onClick={() => install('piper')} label="Instalar voz natural" /> : local ? <a href="#/settings/voice" className="text-[12px] text-orange-soft hover:underline">Ajustar voz</a> : null}
+              </div>
+            } />
         </div>
+
+        {!local && (
+          <a href="#/settings/brain" className="mt-3 w-full max-w-2xl surface rounded-xl px-3.5 py-2.5 text-[12.5px] text-muted hover:text-fg flex items-center gap-2.5 lift">
+            <span className="size-2 shrink-0 rounded-full bg-orange shadow-[0_0_8px_rgba(255,140,40,.8)]" />
+            <span>Quer o Jarvis bem mais inteligente e respondendo em menos de 1 s? Adicione sua chave grátis da Groq em <b className="text-orange-soft">Configurações → Inteligência</b>.</span>
+          </a>
+        )}
 
         {turns.some((x) => x.m.total) && (
           <div className="mt-4 w-full max-w-2xl surface rounded-xl p-3">

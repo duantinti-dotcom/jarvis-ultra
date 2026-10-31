@@ -3,6 +3,7 @@ import { memo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check, RefreshCw, Download } from 'lucide-react';
+import { useSmoothText } from '@/lib/smooth';
 
 /** Imagem gerada: mostra carregamento e permite tentar de novo (o serviço gratuito pode estar ocupado). */
 function GenImage({ src, alt }: { src?: string; alt?: string }) {
@@ -42,10 +43,35 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
   );
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+type HNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: HNode[] };
+/** Envolve cada palavra num <span class="fw">: só as palavras novas montam e fazem o fade suave. */
+function rehypeFadeWords() {
+  const walk = (n: HNode) => {
+    if (!n.children || n.tagName === 'code' || n.tagName === 'pre') return;
+    const out: HNode[] = [];
+    for (const c of n.children) {
+      if (c.type === 'text' && c.value) {
+        for (const part of c.value.split(/(\s+)/)) {
+          if (!part) continue;
+          out.push(/^\s+$/.test(part) ? { type: 'text', value: part } : { type: 'element', tagName: 'span', properties: { className: ['fw'] }, children: [{ type: 'text', value: part }] });
+        }
+      } else { walk(c); out.push(c); }
+    }
+    n.children = out;
+  };
+  return (tree: HNode) => walk(tree);
+}
+
+export function Markdown({ text, streaming }: { text: string; streaming?: boolean }) {
+  const shown = useSmoothText(text, !!streaming);
+  const animating = !!streaming || shown.length < text.length;
+  return <MarkdownView text={shown} live={animating} />;
+}
+
+const MarkdownView = memo(function MarkdownView({ text, live }: { text: string; live: boolean }) {
   return (
-    <div className="prose-jarvis">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}
+    <div className={live ? 'prose-jarvis md-live' : 'prose-jarvis'}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={live ? [rehypeFadeWords] : []}
         components={{
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children }) => (/language-|\n/.test(String(children)) || className ? <CodeBlock className={className}>{children}</CodeBlock> : <code>{children}</code>),

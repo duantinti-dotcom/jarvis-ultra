@@ -196,7 +196,7 @@ export function createHybridApi(deviceId: string | null): JarvisApi {
     onConn: (fn) => { fn('online'); return conn.on(fn); },
     chat: (text, conversationId, opts) => {
       if (!text.trim()) return Promise.reject(new Error('Pelo site, envie texto (imagens anexadas só no app do PC).'));
-      return cloudChat(text, conversationId, opts?.mode, (e) => events.emit(e));
+      return cloudChat(text, conversationId, opts?.mode, (e) => events.emit(e), opts?.code, opts?.voice);
     },
     cancelMessage: async (id) => cloudCancel(id),
     conversations: cloudConversations,

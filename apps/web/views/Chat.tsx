@@ -25,6 +25,15 @@ export function ChatView() {
   }, []);
   // Rolagem automática só se o usuário estiver no fim (não "puxa" quem está lendo acima).
   useEffect(() => { if (stick.current) endRef.current?.scrollIntoView({ block: 'end' }); }, [chat.messages]);
+  // O texto cresce aos poucos (animação): acompanha o crescimento do conteúdo também.
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = content.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => { const s = scroller.current; if (s && stick.current) s.scrollTop = s.scrollHeight; });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [chat.messages.length > 0]);
 
   const filtered = useMemo(() => (list.data ?? []).filter((c) => !q || c.title.toLowerCase().includes(q.toLowerCase())), [list.data, q]);
   const pinned = filtered.filter((c) => c.pinned);
@@ -55,7 +64,7 @@ export function ChatView() {
       <div className="flex-1 min-w-0 flex flex-col">
         <div ref={scroller} className="flex-1 overflow-y-auto scroll-thin" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120; }}>
           {!chat.messages.length ? <Home /> : (
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+            <div ref={content} className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
               {chat.messages.map((m) => <Message key={m.id} m={m} canRegenerate={m.id === lastAssistantId && !chat.busy} />)}
               {chat.busy && !chat.messages.some((m) => m.streaming && m.content) && <StageLine stage={chat.stage} />}
               <div ref={endRef} />
@@ -209,7 +218,7 @@ function Composer() {
           </div>
         </div>
       </div>
-      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">O Jarvis roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes.</p>
+      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">{api.cloud ? "Jarvis na nuvem: conversa, programa e cria imagens. Confira informações importantes." : "O Jarvis roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes."}</p>
     </div>
   );
 }
@@ -270,7 +279,7 @@ const Message = memo(function Message({ m, canRegenerate }: { m: LiveMessage; ca
           ))}
         </div>
       )}
-      {m.content && <Markdown text={m.content} />}
+      {m.content && <Markdown text={m.content} streaming={m.streaming} />}
       {m.error && <div className="mt-1 rounded-xl border border-err/30 bg-err/[0.07] px-3 py-2 text-[13px] text-err">{m.error}</div>}
       {!m.streaming && (m.content || m.error) && (
         <div className="mt-2 flex flex-wrap items-center gap-1 text-dim">

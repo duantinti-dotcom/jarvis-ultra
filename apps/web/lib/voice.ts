@@ -104,6 +104,9 @@ export function speakable(text: string) {
     .replace(/\*\*|__|[#>*_]/g, '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/https?:\/\/\S+/g, 'link')
+    // emojis e símbolos não são lidos em voz alta
+    .replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\u200d\uFE0F\u20E3]/gu, '')
+    .replace(/[•▪◦→←↑↓✓✔✗✘★☆|]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
