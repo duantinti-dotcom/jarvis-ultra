@@ -35,6 +35,12 @@ export class OllamaError extends Error {}
 
 export class OllamaClient {
   private showCache = new Map<string, ModelShow>();
+  /**
+   * Contexto fixo por chamada: o Ollama RECARREGA o modelo inteiro sempre que
+   * num_ctx muda entre requisições (medido: 3–10 s por troca em CPU, mais com GPU).
+   * Todas as chamadas (pré-carga, classificação, agente, resumo) usam o mesmo valor.
+   */
+  numCtx = Number(process.env.JARVIS_NUM_CTX ?? 8192);
   constructor(public baseUrl: string) {}
 
   private async req(path: string, init?: RequestInit & { timeoutMs?: number }) {
@@ -93,8 +99,8 @@ export class OllamaClient {
       ...(opts.tools?.length ? { tools: opts.tools } : {}),
       ...(opts.format ? { format: opts.format } : {}),
       ...(opts.think !== undefined ? { think: opts.think } : {}),
-      options: { temperature: 0.3, ...opts.options },
-      keep_alive: opts.keepAlive ?? '30m',
+      options: { temperature: 0.3, ...opts.options, num_ctx: this.numCtx },
+      keep_alive: opts.keepAlive ?? '60m',
     };
     const res = await this.req('/api/chat', { method: 'POST', body: JSON.stringify(body), signal: opts.signal, timeoutMs: 15 * 60_000 });
     const reader = res.body!.getReader();
@@ -152,8 +158,8 @@ export class OllamaClient {
   }
 
   /** Pré-carrega o modelo na memória (reduz a latência da primeira resposta). */
-  async load(model: string, keepAlive = '30m') {
-    await this.req('/api/chat', { method: 'POST', body: JSON.stringify({ model, messages: [], keep_alive: keepAlive }), timeoutMs: 10 * 60_000 });
+  async load(model: string, keepAlive = '60m') {
+    await this.req('/api/chat', { method: 'POST', body: JSON.stringify({ model, messages: [], keep_alive: keepAlive, options: { num_ctx: this.numCtx } }), timeoutMs: 10 * 60_000 });
   }
 
   async unload(model: string) {

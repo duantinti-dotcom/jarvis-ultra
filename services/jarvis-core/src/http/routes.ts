@@ -8,8 +8,16 @@ import { analyze } from '../metrics/improve.js';
 import { runBenchmark } from '../bench/run.js';
 import { recentLogs } from '../log.js';
 import { AGENTS } from '../brain/agents.js';
+import { MODES } from '../brain/orchestrator.js';
+import { runShell, prepareCommand } from '../tools/builtin/terminal.js';
+import { backupFile } from '../tools/builtin/fs.js';
+import { run as runProc } from '../util/proc.js';
+import fsSync from 'node:fs';
+import fsp from 'node:fs/promises';
+import nodePath from 'node:path';
+import { DEFAULT_VOICE } from '../voice/engine.js';
 
-const SETTINGS_WHITELIST = new Set(['approvalMode', 'brain.maxIterations', 'model.preload', 'memory.episodicRetentionDays', 'relay.shareLocalConversations', 'allowRemoteHighRiskApproval', 'voice.voice', 'voice.speed', 'voice.mode']);
+const SETTINGS_WHITELIST = new Set(['chat.mode', 'chat.autoTitle', 'ui.onboarded', 'approvalMode', 'brain.maxIterations', 'model.preload', 'memory.episodicRetentionDays', 'relay.shareLocalConversations', 'allowRemoteHighRiskApproval', 'voice.voice', 'voice.speed', 'voice.mode']);
 
 export function buildRoutes(core: Core) {
   const r = new Router();
@@ -31,9 +39,22 @@ export function buildRoutes(core: Core) {
 
   // ---------- chat ----------
   r.post('/api/chat', async (c) => {
-    const b = parse(z.object({ conversationId: z.string().max(64).nullable().optional(), text: z.string().min(1).max(16000), projectId: z.string().max(64).nullable().optional() }), await c.body());
-    const { conversationId, messageId } = core.brain.start({ ...b, origin: 'local' });
+    const raw = await c.body();
+    const b = parse(z.object({ conversationId: z.string().max(64).nullable().optional(), text: z.string().max(16000).default(''), projectId: z.string().max(64).nullable().optional(), mode: z.enum(['fast', 'balanced', 'deep']).optional(), images: z.array(z.string().max(12_000_000)).max(4).optional() }), raw);
+    const text = b.text ?? '';
+    if (!text.trim() && !b.images?.length) throw new HttpError(400, 'Mensagem vazia.');
+    const { conversationId, messageId } = core.brain.start({ ...b, text, origin: 'local' });
     return { conversationId, messageId };
+  });
+  r.get('/api/chat/modes', () => ({ current: core.db.getSetting('chat.mode', 'balanced'), modes: MODES }));
+  r.post('/api/conversations/:id/truncate', async (c) => ({ removed: core.convs.truncateFrom(c.params.id!, parse(z.object({ fromSeq: z.number().int().min(1) }), await c.body()).fromSeq) }));
+  r.post('/api/conversations/:id/pin', async (c) => {
+    core.convs.setPinned(c.params.id!, parse(z.object({ pinned: z.boolean() }), await c.body()).pinned);
+    return { ok: true };
+  });
+  r.post('/api/conversations/:id/project', async (c) => {
+    core.convs.setProject(c.params.id!, parse(z.object({ projectId: z.string().nullable() }), await c.body()).projectId);
+    return { ok: true };
   });
   r.post('/api/chat/:id/cancel', (c) => {
     core.brain.cancelMessage(c.params.id!);
@@ -81,6 +102,8 @@ export function buildRoutes(core: Core) {
     return { ...t, calls };
   });
   r.post('/api/tasks/:id/cancel', (c) => ({ ok: core.tasks.cancel(c.params.id!) }));
+  r.post('/api/tasks/:id/pause', (c) => ({ ok: core.tasks.pause(c.params.id!) }));
+  r.post('/api/tasks/:id/resume', (c) => ({ ok: core.tasks.resume(c.params.id!) }));
   r.post('/api/tasks/:id/retry', (c) => {
     const t = core.tasks.get(c.params.id!);
     if (!t) throw new HttpError(404, 'Tarefa não encontrada.');
@@ -243,15 +266,155 @@ export function buildRoutes(core: Core) {
     return out;
   });
   r.post('/api/voice/speak', async (c) => {
-    const b = parse(z.object({ text: z.string().min(1).max(4000), voice: z.string().optional(), speed: z.number().min(0.5).max(2).default(1) }), await c.body());
+    const b = parse(z.object({ text: z.string().min(1).max(4000), voice: z.string().optional(), speed: z.number().min(0.5).max(2).optional() }), await c.body());
     const out = await core.voice.speak(b.text, b.voice, b.speed);
+    core.brain.recordMetrics('tts-provider', { provider: out.provider, ms: out.ms });
     core.brain.recordMetrics('tts', { ms: out.ms, chars: b.text.length, voice: out.voice });
-    c.res.writeHead(200, { 'content-type': 'audio/wav', 'x-tts-ms': String(out.ms) });
-    c.res.end(out.wav);
+    c.res.writeHead(200, { 'content-type': out.mime, 'x-tts-ms': String(out.ms), 'x-tts-provider': out.provider });
+    c.res.end(out.audio);
   });
+  r.post('/api/voice/settings', async (c) => {
+    const b = parse(z.object({
+      provider: z.enum(['auto', 'elevenlabs', 'piper', 'browser']).optional(), speed: z.number().min(0.6).max(1.6).optional(),
+      piperExpressiveness: z.number().min(0.1).max(1).optional(), piperRhythm: z.number().min(0.1).max(1.2).optional(), piperPauseSec: z.number().min(0).max(1).optional(), piperVoice: z.string().nullable().optional(),
+      elevenVoiceId: z.string().regex(/^[A-Za-z0-9]{10,40}$/).optional(), elevenModel: z.enum(['eleven_flash_v2_5', 'eleven_multilingual_v2', 'eleven_turbo_v2_5']).optional(),
+      stability: z.number().min(0).max(1).optional(), similarity: z.number().min(0).max(1).optional(), style: z.number().min(0).max(1).optional(), whisperModel: z.enum(['base', 'small']).optional(),
+    }), await c.body());
+    const next = { ...DEFAULT_VOICE, ...core.db.getSetting('voice.settings', {}), ...b };
+    core.db.setSetting('voice.settings', next);
+    return next;
+  });
+  r.post('/api/voice/install', async (c) => {
+    const { component } = parse(z.object({ component: z.enum(['whisper', 'piper']) }), await c.body());
+    void core.voice.install(component).catch(() => {});
+    return { started: true };
+  });
+  r.get('/api/voice/install', () => core.voice.installing);
   r.post('/api/voice/metrics', async (c) => {
     core.brain.recordMetrics('voice', parse(z.record(z.number().nullable()), await c.body()));
     return { ok: true };
+  });
+
+  // ---------- credenciais (valor nunca é devolvido) ----------
+  r.get('/api/credentials', () => core.credentials.status());
+  r.post('/api/credentials', async (c) => {
+    const b = parse(z.object({ name: z.string(), value: z.string().min(8).max(500) }), await c.body());
+    await core.credentials.set(b.name, b.value);
+    core.perms.audit('credential.set', 'local', { name: b.name });
+    return core.credentials.status();
+  });
+  r.del('/api/credentials/:name', (c) => {
+    core.credentials.remove(c.params.name!);
+    core.perms.audit('credential.remove', 'local', { name: c.params.name });
+    return core.credentials.status();
+  });
+
+  // ---------- Jarvis Code ----------
+  const SKIP = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'target', '__pycache__', '.venv', 'venv', 'out', 'coverage', '.turbo']);
+  r.get('/api/code/tree', async (c) => {
+    const root = core.perms.resolvePath(c.query.get('root') ?? '', 'read', 'local');
+    const entries: { path: string; dir: boolean; size: number }[] = [];
+    const walk = async (dir: string, depth: number) => {
+      if (entries.length > 4000 || depth > 8) return;
+      const list = (await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])).sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
+      for (const e of list) {
+        if (SKIP.has(e.name) || e.name === '.DS_Store') continue;
+        const full = nodePath.join(dir, e.name);
+        const rel = nodePath.relative(root, full).replace(/\\/g, '/');
+        if (e.isDirectory()) {
+          entries.push({ path: rel, dir: true, size: 0 });
+          await walk(full, depth + 1);
+        } else if (e.isFile()) entries.push({ path: rel, dir: false, size: (await fsp.stat(full).catch(() => ({ size: 0 }))).size });
+      }
+    };
+    await walk(root, 0);
+    const git = fsSync.existsSync(nodePath.join(root, '.git'));
+    return { root, git, truncated: entries.length > 4000, entries };
+  });
+  r.get('/api/code/file', async (c) => {
+    const file = core.perms.resolvePath(c.query.get('path') ?? '', 'read', 'local');
+    const st = await fsp.stat(file);
+    if (st.size > 2_000_000) throw new HttpError(413, 'Arquivo grande demais para o editor (máx. 2 MB).');
+    const buf = await fsp.readFile(file);
+    if (buf.subarray(0, 8000).includes(0)) throw new HttpError(415, 'Arquivo binário.');
+    return { path: file, content: buf.toString('utf8'), mtime: st.mtime.toISOString() };
+  });
+  r.put('/api/code/file', async (c) => {
+    if (!core.perms.grants('local').has('fs.write')) throw new HttpError(403, 'Escrita de arquivos desativada na Central de Segurança.');
+    const b = parse(z.object({ path: z.string(), content: z.string().max(5_000_000) }), JSON.parse((await c.raw(6_000_000)).toString('utf8')));
+    const file = core.perms.resolvePath(b.path, 'write', 'local');
+    const existed = fsSync.existsSync(file);
+    const backup = existed ? await backupFile({ config: core.config } as never, file) : null;
+    await fsp.mkdir(nodePath.dirname(file), { recursive: true });
+    await fsp.writeFile(file, b.content, 'utf8');
+    core.perms.audit('code.save', 'local', { file, backup });
+    return { path: file, backup, bytes: Buffer.byteLength(b.content) };
+  });
+  r.post('/api/code/restore', async (c) => {
+    const b = parse(z.object({ backup: z.string(), path: z.string() }), await c.body());
+    return core.tools.invoke({ tool: 'fs.restore', args: b, origin: 'local' });
+  });
+  r.get('/api/code/git', async (c) => {
+    const root = core.perms.resolvePath(c.query.get('root') ?? '', 'read', 'local');
+    const action = c.query.get('action') ?? 'status';
+    const file = c.query.get('file');
+    const args: Record<string, string[]> = { status: ['status', '--porcelain=v1', '--branch'], diff: ['diff', '--no-color', '-U3', ...(file ? ['--', file] : [])], log: ['log', '--oneline', '-n', '30'], show: ['show', `HEAD:${file ?? ''}`] };
+    if (!args[action]) throw new HttpError(400, 'Ação git inválida.');
+    const r2 = await runProc('git', ['-C', root, ...args[action]!], { timeoutMs: 30_000 });
+    if (r2.code !== 0 && action !== 'show') throw new HttpError(400, r2.stderr.trim() || 'git falhou');
+    return { output: r2.code === 0 ? r2.stdout.slice(0, 500_000) : '' };
+  });
+  r.post('/api/code/git', async (c) => {
+    if (!core.perms.grants('local').has('fs.write')) throw new HttpError(403, 'Escrita desativada.');
+    const b = parse(z.object({ root: z.string(), action: z.enum(['commit', 'restore', 'stage']), message: z.string().max(500).optional(), file: z.string().max(500).optional() }), await c.body());
+    const root = core.perms.resolvePath(b.root, 'write', 'local');
+    let args: string[];
+    if (b.action === 'commit') {
+      if (!b.message?.trim()) throw new HttpError(400, 'Mensagem do commit obrigatória.');
+      const add = await runProc('git', ['-C', root, 'add', '-A'], { timeoutMs: 60_000 });
+      if (add.code !== 0) throw new HttpError(400, add.stderr.trim());
+      args = ['commit', '-m', b.message];
+    } else if (b.action === 'stage') args = ['add', '--', b.file ?? '.'];
+    else {
+      if (!b.file) throw new HttpError(400, 'Informe o arquivo a restaurar.');
+      args = ['checkout', '--', b.file];
+    }
+    const r2 = await runProc('git', ['-C', root, ...args], { timeoutMs: 60_000 });
+    core.perms.audit(`git.${b.action}`, 'local', { root, file: b.file ?? null, ok: r2.code === 0 });
+    if (r2.code !== 0) throw new HttpError(400, (r2.stderr || r2.stdout).trim());
+    return { output: r2.stdout };
+  });
+
+  // ---------- terminal integrado (streaming NDJSON) ----------
+  r.post('/api/terminal/run', async (c) => {
+    if (!core.perms.grants('local').has('terminal.exec')) throw new HttpError(403, 'Terminal desativado. Libere em Desktop Control → Permissões → Terminal.');
+    const b = parse(z.object({ command: z.string().min(1).max(4000), cwd: z.string().optional() }), await c.body());
+    const ac = new AbortController();
+    c.req.on('close', () => ac.abort());
+    const cwd = await prepareCommand({ perms: core.perms, origin: 'local', taskId: null, signal: ac.signal }, b.command, b.cwd);
+    core.perms.audit('terminal.run', 'local', { command: b.command.slice(0, 300), cwd });
+    c.res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
+    c.res.write(JSON.stringify({ type: 'start', cwd }) + '\n');
+    const t0 = Date.now();
+    const out = await runShell(b.command, cwd, ac.signal, (ch) => c.res.write(JSON.stringify({ type: ch.stream, text: ch.text }) + '\n'));
+    c.res.end(JSON.stringify({ type: 'exit', code: out.code, timedOut: out.timedOut, ms: Date.now() - t0 }) + '\n');
+  });
+
+  // ---------- sessão / estado de segurança ----------
+  r.get('/api/security/overview', async () => {
+    const pending = core.perms.listApprovals('pending').length;
+    const grants = core.perms.grants('local');
+    return {
+      session: { core: 'autenticado por token local', boundTo: '127.0.0.1', startedAt: new Date(core.startedAt).toISOString() },
+      emergencyStop: core.perms.emergencyStopped,
+      remote: { enabled: core.relay.enabled, connected: core.relay.connected, deviceId: core.relay.config?.deviceId ?? null },
+      roots: core.perms.roots().length, apps: core.perms.apps().length,
+      sensitiveScopes: { inputControl: grants.has('input.control'), terminal: grants.has('terminal.exec'), screenCapture: grants.has('screen.capture'), browser: grants.has('browser.control'), delete: grants.has('fs.delete') },
+      pendingApprovals: pending,
+      credentials: core.credentials.status(),
+      deniedLast24h: core.db.get<{ n: number }>("SELECT count(*) AS n FROM audit_events WHERE kind = 'tool.denied' AND created_at > ?", new Date(Date.now() - 86400_000).toISOString())?.n ?? 0,
+      actionsLast24h: core.db.get<{ n: number }>('SELECT count(*) AS n FROM tool_calls WHERE created_at > ?', new Date(Date.now() - 86400_000).toISOString())?.n ?? 0,
+    };
   });
 
   // ---------- laboratório e plugins ----------

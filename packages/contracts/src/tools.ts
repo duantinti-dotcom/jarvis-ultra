@@ -19,6 +19,8 @@ export const PermissionScope = z.enum([
   'memory.write',
   'lab.execute',
   'net.fetch',
+  'input.control',
+  'terminal.exec',
 ]);
 export type PermissionScope = z.infer<typeof PermissionScope>;
 

@@ -103,7 +103,7 @@ export class MemoryStore {
   }
 
   /** Busca híbrida: FTS5 (BM25) + similaridade de cosseno quando há embeddings. */
-  async search(query: string, opts: { limit?: number; category?: MemoryCategory; minScore?: number } = {}) {
+  async search(query: string, opts: { limit?: number; category?: MemoryCategory; minScore?: number; semantic?: boolean; semanticBudgetMs?: number } = {}) {
     const limit = opts.limit ?? 6;
     const scores = new Map<string, { lex: number; sem: number }>();
     const fts = ftsQuery(query);
@@ -117,11 +117,17 @@ export class MemoryStore {
       for (const r of rows) scores.set(r.id, { lex: best ? r.rank / best : 1, sem: 0 });
     }
     let semantic = false;
-    if (this.embedder) {
+    if (this.embedder && opts.semantic !== false) {
       try {
         const model = await this.embedder.model();
         if (model) {
-          const [q] = await this.embedder.embed([query], 'query');
+          // Nunca segura a resposta esperando o modelo de embeddings carregar:
+          // passado o limite, segue só com a busca por palavras (FTS).
+          const budget = opts.semanticBudgetMs ?? 1500;
+          const [q] = await Promise.race([
+            this.embedder.embed([query], 'query'),
+            new Promise<number[][]>((_, rej) => setTimeout(() => rej(new Error(`embeddings excederam ${budget} ms`)), budget)),
+          ]);
           if (q) {
             semantic = true;
             const rows = this.db.all<{ memory_id: string; vector: Uint8Array; dim: number }>(

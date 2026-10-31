@@ -70,7 +70,7 @@ export function createServer(core: Core, router: Router, token: string) {
     const ctx: Ctx = {
       req, res, params: m.params, query: url.searchParams,
       body: async () => {
-        const raw = await readRaw(req);
+        const raw = await readRaw(req, url.pathname === '/api/chat' ? 40_000_000 : 1_000_000);
         if (!raw.length) return {};
         try {
           return JSON.parse(raw.toString('utf8'));

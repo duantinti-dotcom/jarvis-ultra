@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const TaskState = z.enum([
-  'waiting', 'planning', 'awaiting_approval', 'executing',
+  'waiting', 'planning', 'awaiting_approval', 'executing', 'paused',
   'verifying', 'correcting', 'completed', 'failed', 'cancelled',
 ]);
 export type TaskState = z.infer<typeof TaskState>;

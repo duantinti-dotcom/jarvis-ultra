@@ -1,4 +1,4 @@
-import type { RequestOrigin, GenerationMetrics, ToolManifest } from '@jarvis/contracts';
+import type { RequestOrigin, GenerationMetrics, ToolManifest, ReasoningMode, TimingBreakdown } from '@jarvis/contracts';
 import type { Db } from '../db/index.js';
 import { json } from '../db/index.js';
 import type { Bus } from '../bus.js';
@@ -49,7 +49,14 @@ const STOP_RE = /^\s*(jarvis[,!\s]*)?(pare|parar|cancele|cancelar|interrompa|abo
 const VOICE_RE = /\b(ligue|ligar|ative|ativar|inicie|iniciar|comece|come[cç]ar)\b.*\b(modo de voz|chamada|liga[cç][aã]o|voz)\b/i;
 const SMALLTALK_RE = /^\s*(jarvis[,!\s]*)?(oi|ol[aá]|e a[ií]|bom dia|boa tarde|boa noite|obrigad[oa]|valeu|tudo bem\??|como vai\??|tchau|at[eé] logo)[\s!.?]*$/i;
 
-export type ChatInput = { conversationId?: string | null; text: string; origin: RequestOrigin; projectId?: string | null };
+export type ChatInput = { conversationId?: string | null; text: string; origin: RequestOrigin; projectId?: string | null; mode?: ReasoningMode; images?: string[] };
+
+/** O que cada modo muda de fato no pipeline. */
+export const MODES: Record<ReasoningMode, { label: string; classifier: 'never' | 'auto' | 'always'; semanticMemory: boolean; maxIterations: number; numPredict: number; think: boolean; temperature: number; audit: boolean; modelClass: 'fast' | 'tools' | 'deep' }> = {
+  fast: { label: 'Rápido', classifier: 'never', semanticMemory: false, maxIterations: 5, numPredict: 700, think: false, temperature: 0.3, audit: false, modelClass: 'fast' },
+  balanced: { label: 'Equilibrado', classifier: 'auto', semanticMemory: true, maxIterations: 8, numPredict: 2048, think: false, temperature: 0.3, audit: false, modelClass: 'tools' },
+  deep: { label: 'Profundo', classifier: 'always', semanticMemory: true, maxIterations: 14, numPredict: 4096, think: true, temperature: 0.4, audit: true, modelClass: 'deep' },
+};
 export type ChatOutcome = { conversationId: string; messageId: string; content: string; taskId: string | null; state: 'completed' | 'failed' | 'cancelled' | 'answered' | 'clarify'; metrics: GenerationMetrics; intent: Intent | null };
 
 export class Brain {
@@ -109,15 +116,20 @@ export class Brain {
       return this.finishDirect(conversationId, messageId, input, 'Iniciando a chamada de voz. Pode falar.', t0);
     }
 
-    const pick = await this.router.pick('tools');
+    const mode: ReasoningMode = input.mode ?? this.db.getSetting<ReasoningMode>('chat.mode', 'balanced');
+    const cfg = MODES[mode];
+    const tm: TimingBreakdown = {};
+    const pick = (await this.router.pick(cfg.modelClass)) ?? (await this.router.pick('tools'));
     if (!pick) {
       const v = await this.ollama.version();
       throw new Error(v ? 'Nenhum modelo de linguagem compatível está instalado. Abra o Gerenciador de Modelos e instale um (ex.: qwen3:4b-instruct-2507-q4_K_M).' : `O motor de IA local (Ollama) não está respondendo em ${this.ollama.baseUrl}. Inicie o Ollama e tente novamente.`);
     }
 
     // 2. Contexto: memórias relevantes + histórico dentro do orçamento.
-    const memories = await this.memory.search(text, { limit: 4 }).catch(() => ({ semantic: false, results: [] }));
-    const procedures = await this.memory.search(text, { limit: 2, category: 'procedural' }).catch(() => ({ semantic: false, results: [] }));
+    const tMem = performance.now();
+    const memories = await this.memory.search(text, { limit: 4, semantic: cfg.semanticMemory }).catch(() => ({ semantic: false, results: [] }));
+    const procedures = mode === 'fast' ? { semantic: false, results: [] as Awaited<ReturnType<MemoryStore['search']>>['results'] } : await this.memory.search(text, { limit: 2, category: 'procedural', semantic: cfg.semanticMemory }).catch(() => ({ semantic: false, results: [] }));
+    tm.memoryMs = Math.round(performance.now() - tMem);
     const history = buildHistory(this.convs, conversationId, Math.floor(pick.numCtx * 0.35));
     history.messages.pop(); // remove a mensagem atual (adicionada novamente abaixo)
     if (history.needsSummary) void this.summarize(conversationId).catch((e) => log.warn(`resumo falhou: ${e.message}`));
@@ -125,18 +137,22 @@ export class Brain {
     // 3. Intenção e plano: regras rápidas quando há certeza; senão o classificador.
     let intent: Intent;
     const fast = SMALLTALK_RE.test(text) ? null : fastRoute(text);
-    if (SMALLTALK_RE.test(text)) {
+    if (input.images?.length) {
+      return this.answerImages(conversationId, messageId, input, history.messages, text, signal, t0, mode, tm);
+    }
+    if (SMALLTALK_RE.test(text) || (cfg.classifier === 'never' && !fast)) {
       intent = { kind: 'conversation', agent: 'general', needs_tools: false, goal: text, clarifying_question: '', steps: [], success_criteria: [] };
     } else if (fast === 'ambiguous') {
       intent = { kind: 'ambiguous', agent: 'general', needs_tools: false, goal: text, clarifying_question: 'Esse pedido pode modificar muitos arquivos. O que exatamente você quer que eu faça? Por exemplo: em qual pasta, qual critério de organização (por tipo, data, projeto) e se posso mover ou apenas sugerir.', steps: [], success_criteria: [] };
       this.bus.emitEvent({ type: 'intent', conversationId, kind: 'ambiguous', agent: 'rules', model: 'regras', ms: 0 });
-    } else if (fast) {
+    } else if (fast && cfg.classifier !== 'always') {
       intent = { kind: fast.kind, agent: fast.agent, needs_tools: true, goal: text, clarifying_question: '', steps: [], success_criteria: [] };
       this.bus.emitEvent({ type: 'intent', conversationId, kind: fast.kind, agent: fast.agent, model: 'regras', ms: 0 });
     } else {
       const ti = performance.now();
       intent = await this.classify(text, history.messages, pick.model, signal);
-      this.bus.emitEvent({ type: 'intent', conversationId, kind: intent.kind, agent: intent.agent, model: pick.model, ms: Math.round(performance.now() - ti) });
+      tm.intentMs = Math.round(performance.now() - ti);
+      this.bus.emitEvent({ type: 'intent', conversationId, kind: intent.kind, agent: intent.agent, model: pick.model, ms: tm.intentMs });
     }
 
     if (intent.kind === 'ambiguous' && intent.clarifying_question.trim()) {
@@ -159,12 +175,11 @@ export class Brain {
 
     const useTools = intent.needs_tools || intent.kind === 'action' || intent.kind === 'plan_request' && agent.tools.length > 0;
     if (!useTools) {
-      const model = (await this.router.pick('chat'))?.model ?? pick.model;
-      return this.answerOnly(conversationId, messageId, input, [system, ...history.messages, userMsg], model, pick.numCtx, signal, t0, intent);
+      return this.answerOnly(conversationId, messageId, input, [system, ...history.messages, userMsg], pick.model, pick.numCtx, signal, t0, intent, mode, tm);
     }
 
-    const modelPick = (agent.modelClass === 'code' ? await this.router.pick('code') : null) ?? pick;
-    return this.runTask(conversationId, messageId, input, intent, agent.id, [system, ...history.messages, userMsg], modelPick.model, modelPick.numCtx, signal, t0);
+    const modelPick = (agent.modelClass === 'code' && mode !== 'fast' ? await this.router.pick(mode === 'deep' ? 'deep' : 'code') : null) ?? pick;
+    return this.runTask(conversationId, messageId, input, intent, agent.id, [system, ...history.messages, userMsg], modelPick.model, modelPick.numCtx, signal, t0, mode, tm);
   }
 
   private finishDirect(conversationId: string, messageId: string, input: ChatInput, text: string, t0: number, intent: Intent | null = null, state: ChatOutcome['state'] = 'answered'): ChatOutcome {
@@ -209,28 +224,33 @@ Pedido: """${text.slice(0, 2000)}"""`;
     }
   }
 
-  private async answerOnly(conversationId: string, messageId: string, input: ChatInput, messages: ChatMessage[], model: string, numCtx: number, signal: AbortSignal, t0: number, intent: Intent): Promise<ChatOutcome> {
+  private async answerOnly(conversationId: string, messageId: string, input: ChatInput, messages: ChatMessage[], model: string, _numCtx: number, signal: AbortSignal, t0: number, intent: Intent, mode: ReasoningMode = 'balanced', tm: TimingBreakdown = {}): Promise<ChatOutcome> {
+    const cfg = MODES[mode];
     const show = await this.ollama.show(model).catch(() => ({ capabilities: [] as string[] }));
     this.bus.emitEvent({ type: 'agent.state', state: 'speaking' });
     const r = await this.queue.run('interactive', () => this.ollama.chat({
-      model, messages, signal, options: { num_ctx: numCtx }, onDelta: (t) => this.say(conversationId, messageId, t),
-      ...(show.capabilities?.includes('thinking') ? { think: false } : {}),
+      model, messages, signal, options: { temperature: cfg.temperature, num_predict: cfg.numPredict }, onDelta: (t) => this.say(conversationId, messageId, t),
+      ...(show.capabilities?.includes('thinking') ? { think: cfg.think } : {}),
     }), signal);
+    addModelTiming(tm, r.metrics);
     let content = r.message.content;
     const urlNote = unverifiedUrlNote(content, '');
     if (urlNote) {
       content += urlNote;
       this.say(conversationId, messageId, urlNote);
     }
-    const metrics: GenerationMetrics = { ...pickMetrics(r.metrics), totalMs: Math.round(performance.now() - t0), toolCalls: 0 };
+    const totalMs = Math.round(performance.now() - t0);
+    const metrics: GenerationMetrics = { ...pickMetrics(r.metrics), totalMs, toolCalls: 0, mode, timing: finishTiming(tm, totalMs, r.metrics.timeToFirstTokenMs) };
     this.recordMetrics('generation', { ...metrics, origin: input.origin });
     this.convs.add(conversationId, { role: 'assistant', content, id: messageId, metrics, origin: input.origin });
+    this.afterAnswer(conversationId);
     this.bus.emitEvent({ type: 'chat.done', conversationId, messageId, metrics });
     this.bus.emitEvent({ type: 'agent.state', state: 'idle' });
     return { conversationId, messageId, content, taskId: null, state: 'answered', metrics, intent };
   }
 
-  private async runTask(conversationId: string, messageId: string, input: ChatInput, intent: Intent, agentId: AgentId, messages: ChatMessage[], model: string, numCtx: number, outerSignal: AbortSignal, t0: number): Promise<ChatOutcome> {
+  private async runTask(conversationId: string, messageId: string, input: ChatInput, intent: Intent, agentId: AgentId, messages: ChatMessage[], model: string, numCtx: number, outerSignal: AbortSignal, t0: number, mode: ReasoningMode = 'balanced', tm: TimingBreakdown = {}): Promise<ChatOutcome> {
+    const cfg = MODES[mode];
     const agent = AGENTS[agentId];
     const { task, signal: taskSignal } = this.tasks.create({ conversationId, origin: input.origin, goal: intent.goal || input.text, plan: intent.steps, successCriteria: intent.success_criteria });
     const signal = AbortSignal.any([outerSignal, taskSignal]);
@@ -247,29 +267,32 @@ Pedido: """${text.slice(0, 2000)}"""`;
     if (intent.steps.length) last.content += `\n\n[Plano proposto:\n${intent.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}]`;
 
     const show = await this.ollama.show(model).catch(() => ({ capabilities: [] as string[] }));
-    const think = show.capabilities?.includes('thinking') ? { think: false } : {};
+    const think = show.capabilities?.includes('thinking') ? { think: cfg.think } : {};
     const calls: { manifest: ToolManifest | undefined; result: InvokeResult; args: unknown }[] = [];
     const failures = new Map<string, number>();
     let content = '';
     let firstMetrics: ReturnType<typeof pickMetrics> | null = null;
     let promptTokens = 0, completionTokens = 0;
-    const maxIters = Number(this.db.getSetting('brain.maxIterations', 8));
+    const maxIters = Number(this.db.getSetting('brain.maxIterations', cfg.maxIterations));
+    let toolsMs = 0;
     this.tasks.setState(task.id, 'executing', { plan: intent.steps });
     this.bus.emitEvent({ type: 'agent.state', state: 'executing' });
 
     try {
       for (let iter = 0; iter < maxIters; iter++) {
         if (signal.aborted) throw signal.reason ?? new Error('Cancelado');
+        await this.tasks.waitIfPaused(task.id, signal);
         const budgetNote = estimateTokens(JSON.stringify(messages)) > numCtx * 0.8;
         if (budgetNote) compactToolResults(messages);
         const r = await this.queue.run('interactive', () => this.ollama.chat({
-          model, messages, tools: ollamaTools, signal, options: { num_ctx: numCtx, temperature: 0.2 }, ...think,
+          model, messages, tools: ollamaTools, signal, options: { temperature: Math.min(0.3, cfg.temperature), num_predict: cfg.numPredict }, ...think,
           onDelta: (t) => {
             content += t;
             this.say(conversationId, messageId, t);
           },
         }), signal);
         firstMetrics ??= pickMetrics(r.metrics);
+        addModelTiming(tm, r.metrics);
         promptTokens += r.metrics.promptTokens ?? 0;
         completionTokens += r.metrics.completionTokens ?? 0;
         messages.push(r.message);
@@ -288,11 +311,18 @@ Pedido: """${text.slice(0, 2000)}"""`;
           if ((failures.get(key) ?? 0) >= 2) {
             result = { callId: 'skip', tool: name, ok: false, error: 'Esta mesma chamada já falhou duas vezes. Não repita: explique o problema ao usuário ou tente outra abordagem.', durationMs: 0, verification: null };
           } else {
+            await this.tasks.waitIfPaused(task.id, signal);
             const stepId = this.tasks.addStep(task.id, { agent: agent.name, description: `${name} ${summarizeArgs(args)}`, tool: name, args: args as Record<string, unknown> });
+            const stepIndex = calls.length;
+            const app = typeof (args as { name?: unknown }).name === 'string' && name.startsWith('apps.') ? String((args as { name: string }).name) : typeof (args as { window?: unknown }).window === 'string' ? String((args as { window: string }).window) : undefined;
+            this.bus.emitEvent({ type: 'task.step', taskId: task.id, conversationId, index: stepIndex, tool: name, app, description: summarizeArgs(args), state: 'running' });
+            const tTool = performance.now();
             if (manifest && this.perms.evaluate(manifest, input.origin).allowed && (this.perms.evaluate(manifest, input.origin) as { needsApproval: boolean }).needsApproval) this.tasks.setState(task.id, 'awaiting_approval');
             result = await this.tools.invoke({ tool: name, args, origin: input.origin, taskId: task.id, stepId, conversationId, signal });
             this.tasks.setState(task.id, result.ok ? 'executing' : 'correcting');
+            toolsMs += performance.now() - tTool;
             this.tasks.finishStep(stepId, result.ok ? 'done' : 'failed', { result: result.data, error: result.error, verification: result.verification });
+            this.bus.emitEvent({ type: 'task.step', taskId: task.id, conversationId, index: stepIndex, tool: name, app, description: result.ok ? (result.verification?.detail ?? 'concluído') : (result.error ?? 'falhou'), state: result.ok ? 'done' : 'failed' });
             if (!result.ok) failures.set(key, (failures.get(key) ?? 0) + 1);
           }
           calls.push({ manifest, result, args });
@@ -303,6 +333,10 @@ Pedido: """${text.slice(0, 2000)}"""`;
       // 4. Verificação final (determinística) — impede declarar sucesso sem evidência.
       this.tasks.setState(task.id, 'verifying');
       const verdict = auditCalls(calls, intent, content);
+      if (cfg.audit && !verdict.failed && intent.success_criteria.length && calls.length) {
+        const judged = await this.judge(intent, calls.map((c) => ({ tool: c.result.tool, ok: c.result.ok, verification: c.result.verification?.detail ?? null, error: c.result.error ?? null })), model, signal).catch(() => null);
+        if (judged && !judged.met) verdict.note += `\n\n---\n🔎 **Auditor (modo Profundo):** critérios possivelmente não atendidos — ${judged.reason}`;
+      }
       const urlNote = unverifiedUrlNote(content, calls.map((c) => JSON.stringify(c.result.data ?? '')).join(' '));
       if (urlNote) verdict.note += urlNote;
       if (verdict.note) {
@@ -316,9 +350,12 @@ Pedido: """${text.slice(0, 2000)}"""`;
       }
       const finalState = verdict.failed ? 'failed' : 'completed';
       this.tasks.setState(task.id, finalState, { result: content.slice(0, 4000), error: verdict.failed ? verdict.summary : null });
+      tm.toolsMs = Math.round(toolsMs);
+      const totalMs = Math.round(performance.now() - t0);
       const metrics: GenerationMetrics = {
-        model, timeToFirstTokenMs: firstMetrics?.timeToFirstTokenMs ?? null, totalMs: Math.round(performance.now() - t0),
+        model, timeToFirstTokenMs: firstMetrics?.timeToFirstTokenMs ?? null, totalMs,
         promptTokens, completionTokens, tokensPerSecond: firstMetrics?.tokensPerSecond ?? null, toolCalls: calls.length,
+        mode, timing: finishTiming(tm, totalMs, firstMetrics?.timeToFirstTokenMs ?? null),
       };
       this.recordMetrics('generation', { ...metrics, origin: input.origin, taskId: task.id });
       this.recordMetrics('task', { taskId: task.id, state: finalState, tools: calls.map((c) => ({ tool: c.result.tool, ok: c.result.ok, ms: c.result.durationMs })) });
@@ -326,6 +363,7 @@ Pedido: """${text.slice(0, 2000)}"""`;
       this.bus.emitEvent({ type: 'chat.done', conversationId, messageId, metrics });
       this.bus.emitEvent({ type: 'agent.state', state: finalState === 'completed' ? 'success' : 'error' });
       void this.learn(task.id, intent, calls, finalState).catch(() => {});
+      this.afterAnswer(conversationId);
       return { conversationId, messageId, content, taskId: task.id, state: finalState, metrics, intent };
     } catch (e) {
       const cancelled = signal.aborted;
@@ -340,6 +378,48 @@ Pedido: """${text.slice(0, 2000)}"""`;
       this.bus.emitEvent({ type: 'agent.state', state: cancelled ? 'idle' : 'error' });
       return { conversationId, messageId, content, taskId: task.id, state: cancelled ? 'cancelled' : 'failed', metrics, intent };
     }
+  }
+
+  /** Imagens: usa um modelo com visão de verdade ou explica que falta instalar um. */
+  private async answerImages(conversationId: string, messageId: string, input: ChatInput, history: ChatMessage[], text: string, signal: AbortSignal, t0: number, mode: ReasoningMode, tm: TimingBreakdown): Promise<ChatOutcome> {
+    const vision = await this.router.pickVisionModel();
+    if (!vision) {
+      return this.finishDirect(conversationId, messageId, input, 'Para analisar imagens preciso de um modelo com visão. Instale um em **Configurações → Modelos** (ex.: `qwen2.5vl:3b` ou `gemma3:4b`) e envie a imagem de novo.', t0);
+    }
+    const images = (input.images ?? []).slice(0, 4).map((b) => b.replace(/^data:[^,]+,/, ''));
+    const messages: ChatMessage[] = [{ role: 'system', content: BASE_SYSTEM_PROMPT }, ...history.slice(-6), { role: 'user', content: text || 'Descreva a imagem.', images }];
+    return this.answerOnly(conversationId, messageId, input, messages, vision, 0, signal, t0, { kind: 'question', agent: 'general', needs_tools: false, goal: text, clarifying_question: '', steps: [], success_criteria: [] }, mode, tm);
+  }
+
+  /** Auditor do modo Profundo: julga só pelas evidências das ferramentas. */
+  private async judge(intent: Intent, evidence: unknown, model: string, signal: AbortSignal): Promise<{ met: boolean; reason: string }> {
+    const r = await this.queue.run('interactive', () => this.ollama.chat({
+      model, signal, format: { type: 'object', properties: { met: { type: 'boolean' }, reason: { type: 'string' } }, required: ['met', 'reason'] },
+      options: { temperature: 0, num_predict: 200 },
+      messages: [{ role: 'user', content: `Objetivo: ${intent.goal}\nCritérios de sucesso: ${intent.success_criteria.join('; ')}\nEvidências (resultados reais das ferramentas): ${JSON.stringify(evidence).slice(0, 4000)}\nOs critérios foram atendidos segundo as evidências? Responda em JSON.` }],
+    }), signal);
+    return JSON.parse(r.message.content);
+  }
+
+  /** Título automático após a primeira troca de mensagens (prioridade baixa). */
+  private afterAnswer(conversationId: string) {
+    const conv = this.convs.get(conversationId);
+    if (!conv || this.db.getSetting<boolean>('chat.autoTitle', true) === false) return;
+    const msgs = this.convs.messages(conversationId, 4).filter((m) => m.role === 'user' || m.role === 'assistant');
+    if (msgs.length !== 2) return;
+    void (async () => {
+      const pick = await this.router.pick('fast');
+      if (!pick) return;
+      const r = await this.queue.run('background', () => this.ollama.chat({
+        model: pick.model, options: { temperature: 0.2, num_predict: 24 }, think: false,
+        messages: [{ role: 'user', content: `Crie um título curto (até 6 palavras, sem aspas, sem ponto final) em português para esta conversa:\nUsuário: ${msgs[0]!.content.slice(0, 400)}\nAssistente: ${msgs[1]!.content.slice(0, 400)}` }],
+      }).catch(() => this.ollama.chat({ model: pick.model, options: { temperature: 0.2, num_predict: 24 }, messages: [{ role: 'user', content: `Título curto (até 6 palavras) para: ${msgs[0]!.content.slice(0, 300)}` }] })));
+      const title = r.message.content.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/["'*#\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (title.length >= 3) {
+        this.convs.rename(conversationId, title);
+        this.bus.emitEvent({ type: 'conversation.updated', conversationId, title });
+      }
+    })().catch((e) => log.debug(`título automático falhou: ${(e as Error).message}`));
   }
 
   /** Memória episódica e procedimentos candidatos a partir de tarefas reais. */
@@ -446,4 +526,18 @@ function pickMetrics(m: { model: string; timeToFirstTokenMs: number | null; tota
 
 function emptyMetrics(model: string): GenerationMetrics {
   return { model, timeToFirstTokenMs: null, totalMs: 0, promptTokens: null, completionTokens: null, tokensPerSecond: null, toolCalls: 0 };
+}
+
+type RawMetrics = { totalMs: number; timeToFirstTokenMs: number | null; loadMs?: number | null; promptEvalMs?: number | null };
+
+function addModelTiming(tm: TimingBreakdown, m: RawMetrics) {
+  tm.modelLoadMs = (tm.modelLoadMs ?? 0) + (m.loadMs ?? 0);
+  tm.promptEvalMs = (tm.promptEvalMs ?? 0) + (m.promptEvalMs ?? 0);
+  tm.generationMs = (tm.generationMs ?? 0) + Math.max(0, m.totalMs - (m.loadMs ?? 0) - (m.promptEvalMs ?? 0));
+}
+
+/** Tudo que não é modelo nem ferramenta é custo do próprio backend (memória, contexto, banco). */
+function finishTiming(tm: TimingBreakdown, totalMs: number, _ttft: number | null): TimingBreakdown {
+  const model = (tm.modelLoadMs ?? 0) + (tm.promptEvalMs ?? 0) + (tm.generationMs ?? 0) + (tm.intentMs ?? 0);
+  return { ...tm, backendMs: Math.max(0, totalMs - model - (tm.toolsMs ?? 0)) };
 }

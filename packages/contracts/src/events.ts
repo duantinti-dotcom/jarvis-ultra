@@ -13,6 +13,8 @@ export type CoreEvent =
   | { type: 'screen.capture'; path: string; scope: string; at: string }
   | { type: 'relay.status'; connected: boolean; detail?: string }
   | { type: 'ui.action'; action: 'voice.start' | 'voice.stop' | 'navigate'; target?: string }
+  | { type: 'conversation.updated'; conversationId: string; title?: string }
+  | { type: 'task.step'; taskId: string; conversationId: string | null; index: number; tool: string; app?: string; description: string; state: string }
   | { type: 'intent'; conversationId: string; kind: string; agent: string; model: string; ms: number }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string };
 
@@ -20,7 +22,22 @@ export type CoreEvent =
 export type CoreVisualState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'executing' | 'success' | 'error' | 'offline';
 
 /** Métricas reais de geração, medidas no core. */
+export type ReasoningMode = 'fast' | 'balanced' | 'deep';
+
+/** Tempos por etapa (ms), medidos no core. Rede/cliente é medido no navegador. */
+export type TimingBreakdown = {
+  memoryMs?: number;
+  intentMs?: number;
+  modelLoadMs?: number;
+  promptEvalMs?: number;
+  generationMs?: number;
+  toolsMs?: number;
+  backendMs?: number;
+};
+
 export type GenerationMetrics = {
+  mode?: ReasoningMode;
+  timing?: TimingBreakdown;
   model: string;
   timeToFirstTokenMs: number | null;
   totalMs: number;

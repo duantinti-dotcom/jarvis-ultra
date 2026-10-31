@@ -7,7 +7,7 @@ import { logger } from '../log.js';
 const log = logger('router');
 
 export type Profile = 'ECO' | 'BALANCED' | 'MAXIMUM';
-export type TaskClass = 'chat' | 'tools' | 'code' | 'vision' | 'fast' | 'embed';
+export type TaskClass = 'chat' | 'tools' | 'code' | 'vision' | 'fast' | 'deep' | 'embed';
 
 export const PROFILES: Record<Profile, { label: string; maxParamsB: number; numCtx: number; description: string }> = {
   ECO: { label: 'ECO', maxParamsB: 2.1, numCtx: 4096, description: 'Modelos até ~2B. Menor uso de RAM/VRAM e respostas rápidas; raciocínio mais limitado.' },
@@ -97,9 +97,10 @@ export class ModelRouter {
     if (this.override && chatModels.some((m) => m.name === this.override)) {
       return { model: this.override, numCtx: profile.numCtx, reason: 'seleção manual' };
     }
-    const needsTools = cls === 'tools' || cls === 'code';
+    const needsTools = cls === 'tools' || cls === 'code' || cls === 'deep';
     const budget = this.budgetGb();
-    const maxP = cls === 'fast' ? Math.min(profile.maxParamsB, 2.1) : profile.maxParamsB;
+    // Profundo pode usar um modelo acima do perfil, desde que caiba na memória livre.
+    const maxP = cls === 'fast' ? Math.min(profile.maxParamsB, 2.1) : cls === 'deep' ? Math.max(profile.maxParamsB, 9) : profile.maxParamsB;
     const ranked = chatModels
       .filter((m) => !needsTools || m.capabilities.includes('tools'))
       .map((m) => {
@@ -107,6 +108,7 @@ export class ModelRouter {
         if (m.estimatedMemoryGb > budget) score -= 100; // não cabe na memória livre agora
         if (cls === 'code' && /coder/i.test(m.name)) score += 3;
         if (cls === 'fast' && m.paramsB <= 2.1) score += 2;
+        if (cls === 'deep' && m.capabilities.includes('thinking')) score += 0.5;
         return { m, score };
       })
       .sort((a, b) => b.score - a.score);

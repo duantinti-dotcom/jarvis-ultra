@@ -13,6 +13,7 @@ const toStep = (r: StepRow): TaskStep => ({ id: r.id, taskId: r.task_id, index: 
 
 export class TaskStore {
   private controllers = new Map<string, AbortController>();
+  private paused = new Map<string, { resume: () => void; promise: Promise<void> }>();
   constructor(private db: Db, private bus: Bus) {}
 
   create(input: { conversationId: string | null; origin: Task['origin']; goal: string; plan?: string[]; successCriteria?: string[] }) {
@@ -64,7 +65,39 @@ export class TaskStore {
     return this.db.all<TaskRow>("SELECT * FROM tasks WHERE state NOT IN ('completed','failed','cancelled') ORDER BY created_at").map(toTask);
   }
 
+  /** Pausa: a tarefa termina a ação atual e espera antes da próxima. */
+  pause(id: string) {
+    const t = this.get(id);
+    if (!t || TERMINAL_STATES.includes(t.state) || this.paused.has(id)) return false;
+    let resume!: () => void;
+    const promise = new Promise<void>((r) => (resume = r));
+    this.paused.set(id, { resume, promise });
+    this.setState(id, 'paused');
+    return true;
+  }
+
+  resume(id: string) {
+    const p = this.paused.get(id);
+    if (!p) return false;
+    this.paused.delete(id);
+    this.setState(id, 'executing');
+    p.resume();
+    return true;
+  }
+
+  isPaused(id: string) {
+    return this.paused.has(id);
+  }
+
+  async waitIfPaused(id: string, signal: AbortSignal) {
+    const p = this.paused.get(id);
+    if (!p) return;
+    await Promise.race([p.promise, new Promise<void>((_, rej) => signal.addEventListener('abort', () => rej(signal.reason ?? new Error('Cancelado')), { once: true }))]);
+  }
+
   cancel(id: string, reason = 'Cancelada pelo usuário') {
+    this.paused.get(id)?.resume();
+    this.paused.delete(id);
     const ac = this.controllers.get(id);
     ac?.abort(new Error(reason));
     this.setState(id, 'cancelled', { error: reason });

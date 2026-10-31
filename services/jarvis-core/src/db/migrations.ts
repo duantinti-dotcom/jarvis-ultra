@@ -126,4 +126,13 @@ CREATE TABLE updates (
 CREATE TABLE relay_processed (command_id TEXT PRIMARY KEY, received_at TEXT NOT NULL, status TEXT NOT NULL);
 `,
   },
+  {
+    version: 2,
+    name: 'chat_pins_projects',
+    sql: `
+ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN mode TEXT;
+CREATE INDEX conversations_pinned ON conversations(pinned, updated_at);
+`,
+  },
 ];

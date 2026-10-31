@@ -17,6 +17,10 @@ import { visionTools } from './tools/builtin/vision.js';
 import { memoryTools } from './tools/builtin/memory.js';
 import { codeTools } from './tools/builtin/code.js';
 import { historyTools } from './tools/builtin/history.js';
+import { inputTools } from './tools/builtin/input.js';
+import { terminalTools } from './tools/builtin/terminal.js';
+import { Credentials } from './security/credentials.js';
+import { DEFAULT_VOICE, type VoiceSettings } from './voice/engine.js';
 import { OllamaClient } from './brain/ollama.js';
 import { ModelRouter } from './brain/router.js';
 import { TaskStore } from './brain/tasks.js';
@@ -50,6 +54,7 @@ export class Core {
   readonly lab: Lab;
   readonly voice: VoiceEngine;
   readonly relay: RelayClient;
+  readonly credentials: Credentials;
   hardware: HardwareInfo | null = null;
   readonly startedAt = Date.now();
 
@@ -77,9 +82,12 @@ export class Core {
     this.plugins = new PluginManager(this.db, this.tools, this.config);
     this.lab = new Lab(this.db, this.bus, this.ollama, this.router, this.brain.queue, this.plugins, this.config);
     this.voice = new VoiceEngine(this.config.dataDir);
+    this.credentials = new Credentials(this.db, this.config.dataDir);
+    this.voice.settings = () => ({ ...DEFAULT_VOICE, ...this.db.getSetting<Partial<VoiceSettings>>('voice.settings', {}) });
+    this.voice.elevenKey = () => this.credentials.get('elevenlabs.apiKey');
     this.relay = new RelayClient(this.db, this.bus, this.config.dataDir, (cmd, id) => this.handleRemote(cmd, id), () => this.deviceStatus());
 
-    for (const t of [...fsTools, ...systemTools, ...appTools, ...documentTools, ...webTools, ...browserTools, ...visionTools(this.bus, this.ollama, this.router), ...memoryTools(this.memory), ...codeTools, ...historyTools(this.convs), ...labTools(this.lab)]) this.tools.register(t);
+    for (const t of [...fsTools, ...systemTools, ...appTools, ...documentTools, ...webTools, ...browserTools, ...visionTools(this.bus, this.ollama, this.router), ...memoryTools(this.memory), ...codeTools, ...historyTools(this.convs), ...labTools(this.lab), ...inputTools, ...terminalTools]) this.tools.register(t);
   }
 
   async init() {
@@ -96,6 +104,8 @@ export class Core {
     // Pré-carrega o modelo principal para reduzir a latência da primeira resposta.
     if (v && this.db.getSetting('model.preload', true)) {
       void this.router.pick('tools').then((p) => p && this.ollama.load(p.model).then(() => log.info(`modelo ${p.model} pré-carregado`))).catch((e) => log.warn(`pré-carga falhou: ${e.message}`));
+      // Embeddings aquecidos: a primeira busca de memória não paga a carga a frio (~20 s medidos em CPU).
+      void this.router.pick('embed').then((p) => p && this.ollama.embed(p.model, ['aquecimento']).then(() => log.info(`embeddings ${p.model} prontos`))).catch(() => {});
     }
     return this;
   }

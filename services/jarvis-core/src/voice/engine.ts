@@ -10,6 +10,44 @@ const log = logger('voice');
 export type VoiceStatus = {
   stt: { engine: 'whisper.cpp' | 'faster-whisper' | null; model: string | null; detail: string };
   tts: { engine: 'piper' | null; voices: string[]; detail: string };
+  elevenlabs: { configured: boolean };
+  installable: { whisper: boolean; piper: boolean };
+  settings: VoiceSettings;
+};
+
+/** Parâmetros de SÍNTESE de voz (não confundir com temperatura do modelo de linguagem). */
+export type VoiceSettings = {
+  provider: 'auto' | 'elevenlabs' | 'piper' | 'browser';
+  speed: number;
+  /** Piper: variação de entonação (noise_scale) e de duração dos fonemas (noise_w). */
+  piperExpressiveness: number;
+  piperRhythm: number;
+  piperPauseSec: number;
+  piperVoice: string | null;
+  /** ElevenLabs */
+  elevenVoiceId: string;
+  elevenModel: 'eleven_flash_v2_5' | 'eleven_multilingual_v2' | 'eleven_turbo_v2_5';
+  stability: number;
+  similarity: number;
+  style: number;
+  whisperModel: 'base' | 'small';
+};
+
+export const DEFAULT_VOICE: VoiceSettings = {
+  provider: 'auto', speed: 1.0,
+  piperExpressiveness: 0.7, piperRhythm: 0.85, piperPauseSec: 0.25, piperVoice: null,
+  // Voz multilíngue pública da biblioteca ElevenLabs; troque pelo ID de uma voz pt-BR da sua conta.
+  elevenVoiceId: 'JBFqnCBsd6RMkjVDRZzb', elevenModel: 'eleven_flash_v2_5', stability: 0.45, similarity: 0.8, style: 0.25,
+  whisperModel: 'base',
+};
+
+const PIPER_URL = 'https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip';
+const PIPER_VOICES: Record<string, string> = {
+  'pt_BR-faber-medium': 'https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx',
+};
+const WHISPER_MODELS: Record<string, string> = {
+  base: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+  small: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
 };
 
 /**
@@ -19,9 +57,88 @@ export type VoiceStatus = {
  */
 export class VoiceEngine {
   private dir: string;
+  settings: () => VoiceSettings = () => DEFAULT_VOICE;
+  elevenKey: () => Promise<string | null> = async () => null;
+  installing: Record<string, { status: string; progress: number; error?: string }> = {};
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, 'voice');
     fs.mkdirSync(path.join(this.dir, 'tmp'), { recursive: true });
+  }
+
+  /** Download com progresso para dentro da pasta de voz do JARVIS. */
+  private async download(url: string, dest: string, key: string) {
+    const res = await fetch(url, { redirect: 'follow' });
+    if (!res.ok || !res.body) throw new Error(`Falha ao baixar ${path.basename(dest)}: HTTP ${res.status}`);
+    const total = Number(res.headers.get('content-length') ?? 0);
+    const tmp = dest + '.part';
+    const out = fs.createWriteStream(tmp);
+    let got = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      got += value.length;
+      if (!out.write(value)) await new Promise<void>((r) => out.once('drain', () => r()));
+      if (total) this.installing[key]!.progress = Math.round((got / total) * 100);
+    }
+    await new Promise<void>((r, j) => out.end((e?: Error | null) => (e ? j(e) : r())));
+    await fsp.rename(tmp, dest);
+  }
+
+  private async unzip(zip: string, dest: string) {
+    const r = process.platform === 'win32'
+      ? await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Expand-Archive -LiteralPath '${zip.replace(/'/g, "''")}' -DestinationPath '${dest.replace(/'/g, "''")}' -Force`], { timeoutMs: 300_000 })
+      : await run('unzip', ['-o', zip, '-d', dest], { timeoutMs: 300_000 });
+    if (r.code !== 0) throw new Error(`Falha ao extrair: ${r.stderr.slice(-300)}`);
+  }
+
+  /** Instala motores locais de voz (Windows): whisper.cpp (ouvir) e Piper com voz pt-BR (falar). */
+  async install(component: 'whisper' | 'piper') {
+    if (process.platform !== 'win32') throw new Error('A instalação automática de voz está disponível no Windows. Em outros sistemas instale whisper.cpp/Piper manualmente.');
+    if (this.installing[component]?.status === 'baixando') throw new Error('Instalação já em andamento.');
+    this.installing[component] = { status: 'baixando', progress: 0 };
+    const st = this.installing[component]!;
+    try {
+      if (component === 'piper') {
+        const dir = path.join(this.dir, 'piper');
+        await fsp.mkdir(dir, { recursive: true });
+        const zip = path.join(this.dir, 'tmp', 'piper.zip');
+        await this.download(PIPER_URL, zip, component);
+        await this.unzip(zip, this.dir); // o zip contém a pasta piper/
+        for (const [name, url] of Object.entries(PIPER_VOICES)) {
+          if (!fs.existsSync(path.join(dir, `${name}.onnx`))) {
+            st.status = `baixando voz ${name}`;
+            await this.download(url, path.join(dir, `${name}.onnx`), component);
+            await this.download(url + '.json', path.join(dir, `${name}.onnx.json`), component);
+          }
+        }
+      } else {
+        const dir = path.join(this.dir, 'whisper');
+        await fsp.mkdir(dir, { recursive: true });
+        const rel = (await (await fetch('https://api.github.com/repos/ggml-org/whisper.cpp/releases/latest', { headers: { accept: 'application/vnd.github+json' } })).json()) as { assets?: { name: string; browser_download_url: string }[] };
+        const asset = rel.assets?.find((a) => a.name === 'whisper-bin-x64.zip');
+        if (!asset) throw new Error('Não encontrei o pacote whisper-bin-x64.zip na última versão do whisper.cpp.');
+        const zip = path.join(this.dir, 'tmp', 'whisper.zip');
+        await this.download(asset.browser_download_url, zip, component);
+        await this.unzip(zip, dir);
+        // Alguns pacotes vêm em subpasta Release/: traz os binários para a raiz.
+        for (const sub of ['Release', 'release']) {
+          const p = path.join(dir, sub);
+          if (fs.existsSync(p)) for (const f of await fsp.readdir(p)) await fsp.rename(path.join(p, f), path.join(dir, f)).catch(() => {});
+        }
+        const model = this.settings().whisperModel;
+        st.status = `baixando modelo ${model}`;
+        const dest = path.join(dir, `ggml-${model}.bin`);
+        if (!fs.existsSync(dest)) await this.download(WHISPER_MODELS[model]!, dest, component);
+      }
+      st.status = 'instalado';
+      st.progress = 100;
+      log.info(`voz: ${component} instalado`);
+    } catch (e) {
+      st.status = 'erro';
+      st.error = (e as Error).message;
+      throw e;
+    }
   }
 
   private find(dir: string, re: RegExp): string[] {
@@ -35,7 +152,9 @@ export class VoiceEngine {
   async whisper(): Promise<{ bin: string; model: string } | null> {
     const exe = process.platform === 'win32' ? '.exe' : '';
     const bin = process.env.JARVIS_WHISPER_BIN ?? [path.join(this.dir, 'whisper', `whisper-cli${exe}`), path.join(this.dir, 'whisper', `main${exe}`)].find((p) => fs.existsSync(p)) ?? (await which('whisper-cli'));
-    const model = process.env.JARVIS_WHISPER_MODEL ?? this.find(path.join(this.dir, 'whisper'), /^ggml-.*\.bin$/).sort((a, b) => rank(a) - rank(b))[0];
+    const pref = this.settings().whisperModel;
+    const all = this.find(path.join(this.dir, 'whisper'), /^ggml-.*\.bin$/);
+    const model = process.env.JARVIS_WHISPER_MODEL ?? all.find((m) => m.includes(`ggml-${pref}`)) ?? all.sort((a, b) => rank(a) - rank(b))[0];
     return bin && model && fs.existsSync(model) ? { bin, model } : null;
   }
 
@@ -57,7 +176,11 @@ export class VoiceEngine {
     const w = await this.whisper();
     const fw = w ? null : await this.fasterWhisper();
     const p = await this.piper();
+    const win = process.platform === 'win32';
     return {
+      elevenlabs: { configured: !!(await this.elevenKey().catch(() => null)) },
+      installable: { whisper: win && !w, piper: win && !p },
+      settings: this.settings(),
       stt: w ? { engine: 'whisper.cpp', model: path.basename(w.model), detail: 'local' } : fw ? { engine: 'faster-whisper', model: process.env.JARVIS_FW_MODEL ?? 'small', detail: 'local (Python)' } : { engine: null, model: null, detail: `Instale whisper.cpp em ${path.join(this.dir, 'whisper')} ou faster-whisper. A interface usará o reconhecimento do navegador.` },
       tts: p ? { engine: 'piper', voices: p.voices.map((v) => path.basename(v, '.onnx')), detail: 'local' } : { engine: null, voices: [], detail: `Instale o Piper e uma voz pt_BR em ${path.join(this.dir, 'piper')}. A interface usará a voz do sistema.` },
     };
@@ -90,18 +213,46 @@ export class VoiceEngine {
     }
   }
 
-  async speak(text: string, voice?: string, speed = 1): Promise<{ wav: Buffer; ms: number; voice: string }> {
-    const p = await this.piper();
-    if (!p) throw new Error('Piper não instalado.');
+  /** Síntese: ElevenLabs (se configurado) → Piper local → erro (a interface usa a voz do sistema). */
+  async speak(text: string, voice?: string, speedOverride?: number): Promise<{ audio: Buffer; mime: string; ms: number; voice: string; provider: string }> {
+    const cfg = this.settings();
+    const speed = speedOverride ?? cfg.speed;
     const t0 = performance.now();
-    const model = p.voices.find((v) => path.basename(v, '.onnx') === voice) ?? p.voices.find((v) => /pt_BR/i.test(v)) ?? p.voices[0]!;
+    const key = cfg.provider === 'auto' || cfg.provider === 'elevenlabs' ? await this.elevenKey().catch(() => null) : null;
+    if (key) {
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(cfg.elevenVoiceId)}/stream?output_format=mp3_44100_128&optimize_streaming_latency=2`, {
+        method: 'POST',
+        headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' },
+        body: JSON.stringify({
+          text: text.slice(0, 2500), model_id: cfg.elevenModel, language_code: cfg.elevenModel === 'eleven_flash_v2_5' || cfg.elevenModel === 'eleven_turbo_v2_5' ? 'pt' : undefined,
+          voice_settings: { stability: cfg.stability, similarity_boost: cfg.similarity, style: cfg.style, use_speaker_boost: true, speed: Math.min(1.2, Math.max(0.7, speed)) },
+        }),
+      });
+      if (!res.ok) {
+        const msg = (await res.text()).slice(0, 300);
+        if (cfg.provider === 'elevenlabs') throw new Error(`ElevenLabs recusou (HTTP ${res.status}): ${msg}`);
+        log.warn(`ElevenLabs falhou (${res.status}); usando Piper`);
+      } else {
+        return { audio: Buffer.from(await res.arrayBuffer()), mime: 'audio/mpeg', ms: Math.round(performance.now() - t0), voice: cfg.elevenVoiceId, provider: 'elevenlabs' };
+      }
+    }
+    if (cfg.provider === 'browser') throw new Error('Voz do navegador selecionada.');
+    const p = await this.piper();
+    if (!p) throw new Error('Nenhuma voz local instalada (instale o Piper em Configurações → Voz).');
+    const wanted = voice ?? cfg.piperVoice;
+    const model = p.voices.find((v) => path.basename(v, '.onnx') === wanted) ?? p.voices.find((v) => /pt_BR/i.test(v)) ?? p.voices[0]!;
     const out = path.join(this.dir, 'tmp', `${newId('tts')}.wav`);
-    const r = await run(p.bin, ['--model', model, '--output_file', out, '--length_scale', String(Math.min(2, Math.max(0.5, 1 / speed)))], { timeoutMs: 60_000, input: text.slice(0, 4000) });
+    const r = await run(p.bin, [
+      '--model', model, '--output_file', out,
+      '--length_scale', String(Math.min(2, Math.max(0.5, 1 / speed))),
+      '--noise_scale', String(Math.min(1, Math.max(0.1, cfg.piperExpressiveness))),
+      '--noise_w', String(Math.min(1.2, Math.max(0.1, cfg.piperRhythm))),
+      '--sentence_silence', String(Math.min(1, Math.max(0, cfg.piperPauseSec))),
+    ], { timeoutMs: 60_000, input: text.slice(0, 4000) });
     if (r.code !== 0 || !fs.existsSync(out)) throw new Error(`Piper falhou: ${r.stderr.slice(-300)}`);
-    const wav = await fsp.readFile(out);
+    const audio = await fsp.readFile(out);
     fsp.rm(out, { force: true }).catch(() => {});
-    log.debug(`tts ${wav.length} bytes`);
-    return { wav, ms: Math.round(performance.now() - t0), voice: path.basename(model, '.onnx') };
+    return { audio, mime: 'audio/wav', ms: Math.round(performance.now() - t0), voice: path.basename(model, '.onnx'), provider: 'piper' };
   }
 }
 

@@ -22,7 +22,7 @@ export const AGENTS: Record<AgentId, AgentDef> = {
   developer: {
     id: 'developer', name: 'JARVIS Developer', modelClass: 'code',
     description: 'Programação: analisa projetos, lê e corrige código, executa testes permitidos.',
-    tools: ['code.analyze_project', 'code.git', 'code.run', 'fs.list', 'fs.read', 'fs.search', 'fs.write', 'fs.mkdir', 'fs.recent', 'documents.read', 'memory.search', 'lab.propose_tool'],
+    tools: ['code.analyze_project', 'code.git', 'terminal.run', 'code.run', 'fs.list', 'fs.read', 'fs.search', 'fs.write', 'fs.mkdir', 'fs.recent', 'documents.read', 'memory.search', 'lab.propose_tool'],
     instructions: 'Antes de alterar código, leia os arquivos relevantes. Prefira mudanças mínimas. Após alterar, rode os testes do projeto (code.run) quando existirem. Nunca afirme que os testes passaram sem ver o exitCode 0.',
   },
   research: {
@@ -34,8 +34,8 @@ export const AGENTS: Record<AgentId, AgentDef> = {
   desktop: {
     id: 'desktop', name: 'JARVIS Desktop', modelClass: 'tools',
     description: 'Interação autorizada com o Windows: aplicativos, janelas, navegador e tela.',
-    tools: ['apps.list', 'apps.launch', 'apps.running', 'apps.active_window', 'apps.focus', 'apps.close', 'screen.capture', 'vision.describe', 'vision.ocr', 'vision.compare', 'browser.open', 'browser.read', 'browser.click', 'browser.fill', 'browser.screenshot', 'system.status'],
-    instructions: 'Prefira APIs e a árvore de acessibilidade (browser.read) a coordenadas. Depois de agir, observe o novo estado para confirmar o efeito.',
+    tools: ['apps.list', 'apps.launch', 'apps.running', 'apps.active_window', 'apps.focus', 'apps.close', 'ui.inspect', 'ui.invoke', 'input.click', 'input.type', 'input.keys', 'screen.capture', 'vision.describe', 'vision.ocr', 'vision.compare', 'browser.open', 'browser.read', 'browser.click', 'browser.fill', 'browser.screenshot', 'system.status'],
+    instructions: 'Para apps do Windows: abra com apps.launch, leia a janela com ui.inspect e prefira ui.invoke (por nome) a cliques por coordenada. Para sites, use browser.read e browser.click. Depois de agir, observe o novo estado para confirmar o efeito.',
   },
   documents: {
     id: 'documents', name: 'JARVIS Documents', modelClass: 'tools',

@@ -33,9 +33,9 @@ export class Conversations {
   }
 
   list(limit = 100) {
-    return this.db.all<{ id: string; title: string; project_id: string | null; origin: string; created_at: string; updated_at: string; count: number }>(
-      'SELECT c.*, (SELECT count(*) FROM messages m WHERE m.conversation_id = c.id) AS count FROM conversations c ORDER BY updated_at DESC LIMIT ?', limit,
-    ).map((c) => ({ id: c.id, title: c.title, projectId: c.project_id, origin: c.origin, createdAt: c.created_at, updatedAt: c.updated_at, messageCount: c.count }));
+    return this.db.all<{ id: string; title: string; project_id: string | null; origin: string; created_at: string; updated_at: string; count: number; pinned: number }>(
+      'SELECT c.*, (SELECT count(*) FROM messages m WHERE m.conversation_id = c.id) AS count FROM conversations c ORDER BY pinned DESC, updated_at DESC LIMIT ?', limit,
+    ).map((c) => ({ id: c.id, title: c.title, projectId: c.project_id, origin: c.origin, createdAt: c.created_at, updatedAt: c.updated_at, messageCount: c.count, pinned: !!c.pinned }));
   }
 
   get(id: string) {
@@ -44,6 +44,21 @@ export class Conversations {
 
   rename(id: string, title: string) {
     this.db.run('UPDATE conversations SET title = ? WHERE id = ?', title.slice(0, 120), id);
+  }
+
+  setPinned(id: string, pinned: boolean) {
+    this.db.run('UPDATE conversations SET pinned = ? WHERE id = ?', pinned ? 1 : 0, id);
+  }
+
+  setProject(id: string, projectId: string | null) {
+    this.db.run('UPDATE conversations SET project_id = ? WHERE id = ?', projectId, id);
+  }
+
+  /** Remove as mensagens a partir de uma posição (editar/regenerar). Retorna quantas saíram. */
+  truncateFrom(id: string, seq: number) {
+    const n = Number(this.db.run('DELETE FROM messages WHERE conversation_id = ? AND seq >= ?', id, seq).changes);
+    this.db.run('UPDATE conversations SET summary = NULL, summarized_upto = 0 WHERE id = ? AND summarized_upto >= ?', id, seq);
+    return n;
   }
 
   delete(id: string) {
