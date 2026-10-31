@@ -73,7 +73,7 @@ export class PermissionEngine {
   addRoot(p: string, access: 'read' | 'readwrite', remote = false): AllowedRoot {
     const abs = path.resolve(p);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new PermissionError(`Pasta inexistente: ${abs}`);
-    const real = fs.realpathSync.native(abs);
+    const real = safeRealpath(abs);
     if (isFilesystemRoot(real)) throw new PermissionError('Não é permitido autorizar a raiz de um disco inteiro. Escolha uma pasta específica.');
     const id = newId('root');
     this.db.run('INSERT INTO allowed_roots (id, path, access, remote, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET access = excluded.access, remote = excluded.remote', id, real, access, remote ? 1 : 0, nowIso());
@@ -274,6 +274,19 @@ function realpathOfNearest(abs: string): string {
     rest.unshift(path.basename(cur));
     cur = parent;
   }
-  const base = fs.existsSync(cur) ? fs.realpathSync.native(cur) : cur;
+  const base = fs.existsSync(cur) ? safeRealpath(cur) : cur;
   return path.join(base, ...rest);
+}
+
+/** realpath que não derruba o core em sistemas onde o Windows recusa lstat na raiz do disco (EISDIR). */
+export function safeRealpath(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  }
 }

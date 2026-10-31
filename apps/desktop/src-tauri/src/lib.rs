@@ -54,8 +54,13 @@ fn start_core(app: AppHandle) {
         let core = resource(&app, "core/jarvis-core.mjs");
         let ui = resource(&app, "ui");
         let mut cmd = Command::new(node_binary());
+        // --preserve-symlinks*: evita que o Node resolva o caminho real até a raiz do disco
+        // na partida (falha com EISDIR em algumas instalações do Windows).
         cmd.arg("--disable-warning=ExperimentalWarning")
+            .arg("--preserve-symlinks")
+            .arg("--preserve-symlinks-main")
             .arg(&core)
+            .current_dir(resource(&app, "core"))
             .env("JARVIS_EMIT_READY", "1")
             .env("JARVIS_UI_DIR", &ui)
             .env("JARVIS_QUIET", "1")
@@ -88,8 +93,15 @@ fn start_core(app: AppHandle) {
         // stdout fechou: o core terminou.
         let mut err = String::new();
         let _ = stderr.read_to_string(&mut err);
-        let tail: String = err.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
-        splash(&app, &format!("O JARVIS Core foi encerrado.\n{tail}"), true);
+        // Log completo para diagnóstico em %LOCALAPPDATA%\JarvisUltra\logs\core-crash.log
+        let log_path = std::env::var("LOCALAPPDATA")
+            .map(|d| PathBuf::from(d).join("JarvisUltra").join("logs"))
+            .unwrap_or_else(|_| std::env::temp_dir());
+        let _ = std::fs::create_dir_all(&log_path);
+        let log_file = log_path.join("core-crash.log");
+        let _ = std::fs::write(&log_file, &err);
+        let tail: String = err.lines().rev().take(14).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+        splash(&app, &format!("O JARVIS Core foi encerrado.\nLog completo: {}\n{tail}", log_file.display()), true);
     });
 }
 
