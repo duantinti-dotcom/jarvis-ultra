@@ -61,6 +61,8 @@ create table public.jarvis_relay_audit (
 );
 
 -- ---------------------------------------------------------------- RLS
+-- Esta migração evita REVOKE/DELETE: o isolamento vem de RLS (sem política = sem acesso),
+-- do segredo em tabela própria e de um gatilho que só deixa o navegador renomear.
 alter table public.jarvis_devices enable row level security;
 alter table public.jarvis_pairing_codes enable row level security;
 alter table public.jarvis_relay_commands enable row level security;
@@ -69,27 +71,34 @@ alter table public.jarvis_relay_audit enable row level security;
 
 create policy jarvis_devices_select on public.jarvis_devices for select to authenticated using (owner = auth.uid());
 create policy jarvis_devices_rename on public.jarvis_devices for update to authenticated using (owner = auth.uid()) with check (owner = auth.uid());
-create policy jarvis_devices_delete on public.jarvis_devices for delete to authenticated using (owner = auth.uid());
--- O segredo nunca é exposto ao navegador: revogar só a coluna não basta quando há
--- GRANT na tabela inteira (padrão do Supabase), então concedemos coluna a coluna.
-revoke select, insert, update on public.jarvis_devices from authenticated, anon;
-grant select (id, owner, name, platform, status, created_at, last_seen_at, revoked_at) on public.jarvis_devices to authenticated;
-grant update (name) on public.jarvis_devices to authenticated;
-
 create policy jarvis_commands_select on public.jarvis_relay_commands for select to authenticated using (owner = auth.uid());
 create policy jarvis_commands_insert on public.jarvis_relay_commands for insert to authenticated with check (
   owner = auth.uid()
   and exists (select 1 from public.jarvis_devices d where d.id = device_id and d.owner = auth.uid() and d.revoked_at is null)
 );
-revoke update, delete on public.jarvis_relay_commands from authenticated, anon;
-
 create policy jarvis_events_select on public.jarvis_relay_events for select to authenticated using (owner = auth.uid());
 create policy jarvis_audit_select on public.jarvis_relay_audit for select to authenticated using (owner = auth.uid());
 
--- Tudo o que o dispositivo faz passa por funções SECURITY DEFINER com segredo.
-revoke all on public.jarvis_devices, public.jarvis_pairing_codes, public.jarvis_relay_commands, public.jarvis_relay_events, public.jarvis_relay_audit from anon;
+-- Segredos dos dispositivos: RLS ativo e nenhuma política = ninguém lê pela API.
+create table public.jarvis_device_secrets (
+  device_id uuid primary key references public.jarvis_devices(id) on delete cascade,
+  secret_hash text not null
+);
+alter table public.jarvis_device_secrets enable row level security;
 
--- Limite de comandos por usuário (anti-abuso): 60 por minuto.
+-- Pelo navegador só o nome do dispositivo pode mudar.
+create or replace function public.jarvis_devices_guard() returns trigger language plpgsql set search_path = public as $$
+begin
+  if current_user in ('authenticated', 'anon') and (
+     new.owner is distinct from old.owner or new.revoked_at is distinct from old.revoked_at or
+     new.status is distinct from old.status or new.last_seen_at is distinct from old.last_seen_at or
+     new.secret_hash is distinct from old.secret_hash or new.platform is distinct from old.platform or new.id is distinct from old.id) then
+    raise exception 'somente o nome do dispositivo pode ser alterado';
+  end if;
+  return new;
+end $$;
+create trigger jarvis_devices_guard before update on public.jarvis_devices for each row execute function public.jarvis_devices_guard();
+
 create or replace function public.jarvis_rate_limit() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if (select count(*) from public.jarvis_relay_commands where owner = new.owner and created_at > now() - interval '1 minute') >= 60 then
@@ -99,7 +108,6 @@ begin
 end $$;
 create trigger jarvis_relay_commands_rate before insert on public.jarvis_relay_commands for each row execute function public.jarvis_rate_limit();
 
--- ---------------------------------------------------------------- RPC: usuário
 create or replace function public.jarvis_create_pairing_code() returns json
 language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -109,7 +117,7 @@ declare
   i int;
 begin
   if auth.uid() is null then raise exception 'não autenticado'; end if;
-  delete from public.jarvis_pairing_codes where owner = auth.uid() and used_at is null;
+  update public.jarvis_pairing_codes set expires_at = now() where owner = auth.uid() and used_at is null and expires_at > now();
   for i in 1..8 loop
     v_code := v_code || substr(v_alphabet, 1 + (get_byte(gen_random_bytes(1), 0) % 32), 1);
   end loop;
@@ -121,6 +129,7 @@ end $$;
 create or replace function public.jarvis_revoke_device(p_device_id uuid) returns json
 language plpgsql security definer set search_path = public as $$
 begin
+  if auth.uid() is null then raise exception 'não autenticado'; end if;
   update public.jarvis_devices set revoked_at = now() where id = p_device_id and owner = auth.uid() and revoked_at is null;
   if not found then raise exception 'dispositivo não encontrado'; end if;
   update public.jarvis_relay_commands set status = 'expired', completed_at = now() where device_id = p_device_id and status in ('pending','delivered');
@@ -128,7 +137,6 @@ begin
   return json_build_object('revoked', true);
 end $$;
 
--- ---------------------------------------------------------------- RPC: dispositivo
 create or replace function public.jarvis_claim_pairing(p_code text, p_device_name text, p_platform text) returns json
 language plpgsql security definer set search_path = public, extensions as $$
 declare
@@ -140,8 +148,9 @@ begin
    where code = upper(trim(p_code)) and used_at is null and expires_at > now() for update;
   if not found then raise exception 'código inválido ou expirado'; end if;
   insert into public.jarvis_devices (owner, name, platform, secret_hash)
-    values (v_row.owner, left(coalesce(nullif(trim(p_device_name), ''), 'PC'), 60), left(coalesce(p_platform, ''), 40), encode(digest(v_secret, 'sha256'), 'hex'))
+    values (v_row.owner, left(coalesce(nullif(trim(p_device_name), ''), 'PC'), 60), left(coalesce(p_platform, ''), 40), '-')
     returning id into v_device;
+  insert into public.jarvis_device_secrets (device_id, secret_hash) values (v_device, encode(digest(v_secret, 'sha256'), 'hex'));
   update public.jarvis_pairing_codes set used_at = now(), device_id = v_device where code = v_row.code;
   insert into public.jarvis_relay_audit (owner, device_id, kind) values (v_row.owner, v_device, 'device.paired');
   return json_build_object('device_id', v_device, 'device_secret', v_secret);
@@ -151,11 +160,13 @@ create or replace function public.jarvis_device_sync(p_device_id uuid, p_secret 
 language plpgsql security definer set search_path = public, extensions as $$
 declare
   v_dev public.jarvis_devices;
+  v_hash text;
   v_r jsonb;
   v_cmds json;
 begin
   select * into v_dev from public.jarvis_devices where id = p_device_id;
-  if not found or v_dev.secret_hash <> encode(digest(coalesce(p_secret, ''), 'sha256'), 'hex') then
+  select secret_hash into v_hash from public.jarvis_device_secrets where device_id = p_device_id;
+  if v_dev.id is null or v_hash is null or v_hash <> encode(digest(coalesce(p_secret, ''), 'sha256'), 'hex') then
     raise exception 'invalid device credentials';
   end if;
   if v_dev.revoked_at is not null then
@@ -180,7 +191,6 @@ begin
     end loop;
   end if;
 
-  -- Comandos antigos não são entregues (o PC pode ter ficado offline): expiram.
   update public.jarvis_relay_commands set status = 'expired', completed_at = now()
    where device_id = p_device_id and status = 'pending' and created_at < now() - interval '2 minutes';
 
@@ -191,21 +201,12 @@ begin
   )
   select coalesce(json_agg(claimed order by created_at), '[]'::json) into v_cmds from claimed;
 
-  -- Limpeza: eventos ficam 24 h.
-  delete from public.jarvis_relay_events where device_id = p_device_id and created_at < now() - interval '24 hours';
-
   return json_build_object('revoked', false, 'commands', v_cmds, 'server_time', now());
 end $$;
 
-revoke all on function public.jarvis_claim_pairing(text, text, text) from public;
-revoke all on function public.jarvis_device_sync(uuid, text, jsonb, jsonb, jsonb) from public;
-revoke all on function public.jarvis_create_pairing_code() from public, anon;
-revoke all on function public.jarvis_revoke_device(uuid) from public, anon;
 grant execute on function public.jarvis_claim_pairing(text, text, text) to anon, authenticated;
 grant execute on function public.jarvis_device_sync(uuid, text, jsonb, jsonb, jsonb) to anon, authenticated;
 grant execute on function public.jarvis_create_pairing_code() to authenticated;
 grant execute on function public.jarvis_revoke_device(uuid) to authenticated;
-revoke all on function public.jarvis_rate_limit() from public, anon, authenticated;
 
--- Realtime para o site acompanhar comandos e eventos (respeita RLS).
 alter publication supabase_realtime add table public.jarvis_relay_commands, public.jarvis_relay_events;

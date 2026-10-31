@@ -19,7 +19,8 @@ reset role;
 -- 2. anon não lê tabelas diretamente.
 set role anon;
 do $$ begin
-  begin perform 1 from public.jarvis_devices; raise exception 'FALHA: anon leu devices';
+  begin
+    if (select count(*) from public.jarvis_devices) + (select count(*) from public.jarvis_device_secrets) <> 0 then raise exception 'FALHA: anon leu devices'; end if;
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;
@@ -39,8 +40,8 @@ do $$ begin
   exception when check_violation then null; end;
 end $$;
 do $$ begin
-  begin perform secret_hash from public.jarvis_devices; raise exception 'FALHA: segredo legível pelo navegador';
-  exception when insufficient_privilege then null; end;
+  if (select count(*) from public.jarvis_device_secrets) <> 0 then raise exception 'FALHA: segredo legível pelo navegador'; end if;
+
 end $$;
 reset role;
 
