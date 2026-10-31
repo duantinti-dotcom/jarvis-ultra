@@ -51,7 +51,7 @@ export function Boot() {
           {st.kind === 'login' && <Login onDone={() => resolveRemote()} />}
           {st.kind === 'pick' && <Pick devices={st.devices} onPick={(d) => { localStorage.setItem('jarvis.device', d.id); setSt({ kind: 'ready', api: createRemoteApi(d.id), device: d }); }} onRefresh={resolveRemote} />}
           {st.kind === 'unconfigured' && (
-            <div className="glass rounded-2xl p-5 text-sm text-muted space-y-2">
+            <div className="surface-raised rounded-2xl p-5 text-sm text-muted space-y-2">
               <p className="text-fg font-medium">Nenhum JARVIS Core encontrado.</p>
               <p>No computador, abra o aplicativo <b>JARVIS ULTRA</b>. Para usar pelo celular, este site precisa das variáveis <code>NEXT_PUBLIC_SUPABASE_URL</code> e <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> (veja docs/installation).</p>
             </div>
@@ -68,38 +68,59 @@ export const usernameToEmail = (u: string) => `${u.trim().toLowerCase()}@u.jarvi
 function Login({ onDone }: { onDone: () => void }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'in' | 'up'>('in');
+  const [code, setCode] = useState('');
+  const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recovery, setRecovery] = useState<string | null>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     const sb = supabase();
     try {
-      if (mode === 'up') {
-        const r = await sb.rpc('jarvis_register', { p_username: username, p_password: password });
+      if (mode === 'up' || mode === 'reset') {
+        const r = mode === 'up'
+          ? await sb.rpc('jarvis_register', { p_username: username, p_password: password })
+          : await sb.rpc('jarvis_reset_password', { p_username: username, p_code: code, p_new_password: password });
         if (r.error) throw new Error(r.error.message);
+        const d = r.data as { ok: boolean; error?: string; recovery_code?: string };
+        if (!d.ok) throw new Error(d.error ?? 'Não foi possível concluir.');
+        if (d.recovery_code) setRecovery(d.recovery_code);
       }
       const r = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
-      if (r.error) throw new Error(r.error.message === 'Invalid login credentials' ? 'Usuário ou senha incorretos.' : r.error.message);
-      onDone();
+      if (r.error) throw new Error(/invalid login/i.test(r.error.message) ? 'Usuário ou senha incorretos.' : /rate|too many/i.test(r.error.message) ? 'Muitas tentativas. Aguarde alguns minutos.' : r.error.message);
+      if (mode === 'in') onDone();
     } catch (e2) {
       setErr((e2 as Error).message);
     } finally {
       setBusy(false);
     }
   };
+  if (recovery) {
+    return (
+      <div className="surface-raised rounded-2xl p-5 space-y-3">
+        <div className="font-display text-lg">Guarde seu código de recuperação</div>
+        <p className="text-[13px] text-muted">Ele permite redefinir sua senha sem e-mail. Anote ou salve em local seguro: ele não será mostrado de novo.</p>
+        <div className="rounded-xl border border-amber/30 bg-amber/[0.06] p-3 text-center font-mono text-xl tracking-[0.2em] text-amber select-all">{recovery}</div>
+        <Button variant="subtle" className="w-full" onClick={() => void navigator.clipboard.writeText(recovery)}>Copiar código</Button>
+        <Button variant="primary" className="w-full" onClick={onDone}>Já guardei, entrar no Jarvis</Button>
+      </div>
+    );
+  }
+  const title = mode === 'in' ? 'Entrar' : mode === 'up' ? 'Criar conta' : 'Redefinir senha';
   return (
-    <form onSubmit={submit} className="glass rounded-2xl p-5 space-y-3">
-      <div className="font-display text-lg">{mode === 'in' ? 'Entrar' : 'Criar conta'}</div>
+    <form onSubmit={submit} className="surface-raised rounded-2xl p-5 space-y-3">
+      <div className="font-display text-lg">{title}</div>
       <Input required autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Usuário" value={username} onChange={(e) => setUsername(e.target.value)} aria-label="Usuário" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,29}" title="3 a 30 letras, números, ponto, hífen ou sublinhado" />
-      <Input type="password" required minLength={8} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} placeholder="Senha (mín. 8 caracteres)" value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Senha" />
+      {mode === 'reset' && <Input required autoCapitalize="characters" spellCheck={false} placeholder="Código de recuperação (XXXX-XXXX-XXXX-XXXX)" value={code} onChange={(e) => setCode(e.target.value)} aria-label="Código de recuperação" className="font-mono" />}
+      <Input type="password" required minLength={8} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} placeholder={mode === 'reset' ? 'Nova senha (mín. 8)' : 'Senha (mín. 8 caracteres)'} value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Senha" />
       <ErrorNote error={err} />
-      <Button type="submit" variant="primary" className="w-full" loading={busy}>{mode === 'in' ? 'Entrar' : 'Criar conta'}</Button>
-      <button type="button" className="w-full text-center text-[12.5px] text-muted hover:text-fg" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
-        {mode === 'in' ? 'Não tem conta? Criar agora' : 'Já tenho conta'}
-      </button>
+      <Button type="submit" variant="primary" className="w-full" loading={busy}>{title}</Button>
+      <div className="flex justify-between text-[12.5px]">
+        <button type="button" className="text-muted hover:text-fg" onClick={() => { setErr(null); setMode(mode === 'in' ? 'up' : 'in'); }}>{mode === 'in' ? 'Criar conta' : 'Já tenho conta'}</button>
+        {mode === 'in' && <button type="button" className="text-muted hover:text-fg" onClick={() => { setErr(null); setMode('reset'); }}>Esqueci a senha</button>}
+      </div>
     </form>
   );
 }
@@ -112,7 +133,7 @@ function Pick({ devices, onPick, onRefresh }: { devices: Device[]; onPick: (d: D
     </div>
   );
   return (
-    <div className="glass rounded-2xl p-4 space-y-2">
+    <div className="surface-raised rounded-2xl p-4 space-y-2">
       <div className="font-display text-base mb-1">Escolha o computador</div>
       {devices.map((d) => (
         <button key={d.id} onClick={() => onPick(d)} className="w-full flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:border-orange/40 text-left">

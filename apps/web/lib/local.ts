@@ -66,7 +66,8 @@ export function createLocalApi(coreUrl: string, token: string): JarvisApi {
       const s = await req<StatusView & { device: StatusView['device'] }>('/api/status');
       return { ...s, online: true, lastSeen: new Date().toISOString() };
     },
-    chat: (text, conversationId) => req('/api/chat', { method: 'POST', json: { text, conversationId } }),
+    chat: (text, conversationId, opts) => req('/api/chat', { method: 'POST', json: { text, conversationId, mode: opts?.mode, images: opts?.images } }),
+    truncate: async (id, fromSeq) => { await req(`/api/conversations/${id}/truncate`, { method: 'POST', json: { fromSeq } }); },
     cancelMessage: async (id) => { await req(`/api/chat/${id}/cancel`, { method: 'POST' }); },
     conversations: () => req<ConversationSummary[]>('/api/conversations'),
     conversation: async (id) => (await req<{ messages: ChatMessage[] }>(`/api/conversations/${id}`)).messages,

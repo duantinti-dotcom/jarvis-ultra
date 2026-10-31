@@ -1,88 +1,103 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Phone, PhoneOff, Mic, MicOff, Captions, Volume2, Gauge } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, PhoneOff, Captions, AudioLines, Download, Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
-import { JarvisCore } from '@/components/JarvisCore';
-import { Button, Badge, Select, Panel, cx } from '@/components/ui';
+import { useChat } from '@/lib/chat';
+import { VoiceSphere, type SphereState } from '@/components/VoiceSphere';
+import { ModeSelector } from '@/components/ModeSelector';
+import { Button, cx } from '@/components/ui';
 import { openMic, browserRecognition, speakable, takeSentences, ptVoices, type MicHandle } from '@/lib/voice';
-import type { CoreVisualState } from '@jarvis/contracts';
+import type { ReasoningMode } from '@/lib/types';
 
-type Phase = 'off' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
+type Phase = 'off' | 'starting' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
+type VoiceStatus = { stt: { engine: string | null; detail: string }; tts: { engine: string | null; voices: string[] }; elevenlabs: { configured: boolean }; installable: { whisper: boolean; piper: boolean }; settings: { provider: string; speed: number } };
 type Turn = { user: string; jarvis: string; m: { stt?: number; ttft?: number; firstAudio?: number; total?: number } };
-type VoiceStatus = { stt: { engine: string | null; detail: string }; tts: { engine: string | null; voices: string[]; detail: string } };
+
+const isDesktopApp = () => typeof window !== 'undefined' && !!window.__JARVIS__;
+
+/** Melhor voz do navegador disponível (vozes neurais/online soam bem menos robóticas). */
+function bestBrowserVoice() {
+  const vs = ptVoices().filter((v) => v.lang.toLowerCase().startsWith('pt'));
+  const score = (v: SpeechSynthesisVoice) => (/natural|neural|online|premium|enhanced/i.test(v.name) ? 10 : 0) + (v.lang === 'pt-BR' ? 3 : 0) + (/francisca|antonio|thalita|luciana|felipe/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1);
+  return vs.sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
+function micError(e: unknown): string {
+  const n = (e as { name?: string }).name;
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'Permissão do microfone negada. Libere o microfone para o JARVIS nas configurações de privacidade do Windows (Configurações → Privacidade → Microfone) ou do navegador e tente de novo.';
+  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Nenhum microfone encontrado. Conecte um microfone e tente novamente.';
+  if (n === 'NotReadableError') return 'O microfone está em uso por outro programa ou indisponível.';
+  return (e as Error).message ?? String(e);
+}
 
 export function VoiceView() {
-  const { api, chat, onEvent, setVisual, notify, conn } = useJarvis();
-  const vs = useAsync<VoiceStatus | null>(() => (api.mode === 'local' ? api.req<VoiceStatus>('/api/voice/status') : Promise.resolve(null)), [api]);
+  const { api, onEvent, setVisual, conn, notify } = useJarvis();
+  const chat = useChat();
+  const local = api.mode === 'local';
+  const vs = useAsync<VoiceStatus | null>(() => (local ? api.req<VoiceStatus>('/api/voice/status') : Promise.resolve(null)), [api]);
+  const installs = useAsync<Record<string, { status: string; progress: number; error?: string }>>(() => (local ? api.req('/api/voice/install') : Promise.resolve({})), [api], local ? 1500 : undefined);
   const [phase, setPhase] = useState<Phase>('off');
   const [level, setLevel] = useState(0);
+  const [micOn, setMicOn] = useState(true);
+  const [speakerOn, setSpeakerOn] = useState(true);
   const [captions, setCaptions] = useState(true);
-  const [muted, setMuted] = useState(false);
   const [interim, setInterim] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [voice, setVoice] = useState('');
-  const [speed, setSpeed] = useState(1.05);
-  const [voices, setVoices] = useState<{ value: string; label: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<ReasoningMode>('fast');
   const mic = useRef<MicHandle | null>(null);
   const rec = useRef<ReturnType<typeof browserRecognition>>(null);
-  const phaseRef = useRef<Phase>('off');
-  const mutedRef = useRef(false);
+  const ph = useRef<Phase>('off');
+  const micOnRef = useRef(true);
+  const speakerRef = useRef(true);
   const msgId = useRef<string | null>(null);
   const buf = useRef('');
   const queue = useRef<string[]>([]);
   const playing = useRef(false);
   const source = useRef<AudioBufferSourceNode | null>(null);
   const ttsLevel = useRef(0);
+  const ttsFailed = useRef(false);
   const t = useRef<{ speechEnd?: number; transcript?: number; firstToken?: number; firstAudio?: number }>({});
-  phaseRef.current = phase;
-  mutedRef.current = muted;
+  ph.current = phase;
+  micOnRef.current = micOn;
+  speakerRef.current = speakerOn;
 
-  const coreStt = vs.data?.stt.engine != null;
-  const coreTts = vs.data?.tts.engine != null;
-
-  useEffect(() => {
-    const load = () => {
-      const opts = coreTts ? (vs.data?.tts.voices ?? []).map((v) => ({ value: `core:${v}`, label: `${v} (Piper local)` })) : [];
-      setVoices([...opts, ...ptVoices().map((v) => ({ value: `web:${v.name}`, label: `${v.name} (${v.lang})` }))]);
-    };
-    load();
-    if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = load;
-  }, [coreTts, vs.data]);
-  useEffect(() => { if (!voice && voices[0]) setVoice(voices[0].value); }, [voices, voice]);
+  const coreStt = !!vs.data?.stt.engine;
+  const coreTts = !!vs.data && (vs.data.elevenlabs.configured || !!vs.data.tts.engine) && vs.data.settings.provider !== 'browser';
+  const sttAvailable = coreStt || (!isDesktopApp() && !!(typeof window !== 'undefined' && browserRecognition()));
 
   const setP = useCallback((p: Phase) => {
-    phaseRef.current = p;
+    ph.current = p;
     setPhase(p);
-    const map: Record<Phase, CoreVisualState> = { off: 'idle', listening: 'listening', transcribing: 'thinking', thinking: 'thinking', speaking: 'speaking' };
-    setVisual(map[p]);
+    setVisual(p === 'off' ? 'idle' : p === 'speaking' ? 'speaking' : p === 'listening' ? 'listening' : 'thinking');
   }, [setVisual]);
 
-  // ---------- síntese ----------
+  // ---------- fala ----------
   const stopSpeaking = useCallback(() => {
     queue.current = [];
-    source.current?.stop();
+    try { source.current?.stop(); } catch {}
     source.current = null;
     if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
     playing.current = false;
+    ttsLevel.current = 0;
   }, []);
 
   const pump = useCallback(async () => {
     if (playing.current) return;
     const next = queue.current.shift();
     if (!next) {
-      if (phaseRef.current === 'speaking' && !msgId.current) setP('listening');
+      if (ph.current === 'speaking' && !msgId.current) setP('listening');
       return;
     }
+    if (!speakerRef.current) { void pump(); return; }
     playing.current = true;
-    if (phaseRef.current !== 'off') setP('speaking');
-    if (t.current.firstAudio == null) {
-      t.current.firstAudio = performance.now();
-    }
+    if (ph.current !== 'off') setP('speaking');
+    t.current.firstAudio ??= performance.now();
     const done = () => { playing.current = false; ttsLevel.current = 0; void pump(); };
     try {
-      if (voice.startsWith('core:') && mic.current) {
-        const r = await fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: next, voice: voice.slice(5), speed }) });
-        if (!r.ok) throw new Error((await r.json()).error);
+      if (coreTts && !ttsFailed.current && mic.current && local) {
+        const r = await fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: next }) });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? `HTTP ${r.status}`);
         const ctx = mic.current.ctx;
         const audio = await ctx.decodeAudioData(await r.arrayBuffer());
         const src = ctx.createBufferSource();
@@ -92,26 +107,30 @@ export function VoiceView() {
         src.connect(an);
         an.connect(ctx.destination);
         const arr = new Uint8Array(an.frequencyBinCount);
-        const meter = setInterval(() => { an.getByteTimeDomainData(arr); let s = 0; for (const v of arr) s += ((v - 128) / 128) ** 2; ttsLevel.current = Math.min(1, Math.sqrt(s / arr.length) * 4); }, 50);
+        const meter = setInterval(() => { an.getByteTimeDomainData(arr); let s = 0; for (const v of arr) s += ((v - 128) / 128) ** 2; ttsLevel.current = Math.min(1, Math.sqrt(s / arr.length) * 4); }, 40);
         src.onended = () => { clearInterval(meter); done(); };
         source.current = src;
         src.start();
       } else {
         const u = new SpeechSynthesisUtterance(next);
         u.lang = 'pt-BR';
-        u.rate = speed;
-        const v = ptVoices().find((x) => `web:${x.name}` === voice);
+        u.rate = vs.data?.settings.speed ?? 1.02;
+        const v = bestBrowserVoice();
         if (v) u.voice = v;
-        u.onboundary = () => { ttsLevel.current = 0.7; setTimeout(() => (ttsLevel.current = 0.25), 120); };
+        u.onboundary = () => { ttsLevel.current = 0.65; setTimeout(() => (ttsLevel.current = 0.2), 110); };
         u.onend = done;
         u.onerror = done;
         speechSynthesis.speak(u);
       }
     } catch (e) {
-      notify('err', `Voz: ${(e as Error).message}`);
-      done();
+      // Falhou a voz local/premium: avisa uma vez e segue com a voz do sistema.
+      if (!ttsFailed.current) notify('warn', `Voz principal indisponível (${(e as Error).message}). Usando a voz do sistema.`);
+      ttsFailed.current = true;
+      playing.current = false;
+      queue.current.unshift(next);
+      void pump();
     }
-  }, [api, voice, speed, notify, setP]);
+  }, [api, coreTts, local, notify, setP, vs.data]);
 
   const enqueue = useCallback((s: string) => {
     const clean = speakable(s);
@@ -124,57 +143,60 @@ export function VoiceView() {
   useEffect(() => onEvent((e) => {
     if (!msgId.current) return;
     if (e.type === 'chat.delta' && e.messageId === msgId.current) {
-      if (t.current.firstToken == null) t.current.firstToken = performance.now();
+      t.current.firstToken ??= performance.now();
       setTurns((ts) => ts.map((x, i) => (i === ts.length - 1 ? { ...x, jarvis: x.jarvis + e.text } : x)));
-      if (buf.current.includes('\n---')) return; // rodapé de verificação não é falado
+      if (buf.current.includes('\n---')) return;
       buf.current += e.text;
       const { sentences, rest } = takeSentences(buf.current);
       buf.current = rest;
       sentences.forEach(enqueue);
     }
     if ((e.type === 'chat.done' || e.type === 'chat.error') && e.messageId === msgId.current) {
-      if (e.type === 'chat.error') enqueue(`Erro: ${e.error}`);
+      if (e.type === 'chat.error') enqueue(`Não consegui responder: ${e.error}`);
       if (buf.current.trim() && !buf.current.includes('\n---')) enqueue(buf.current);
       buf.current = '';
       msgId.current = null;
       const m = t.current;
-      const total = performance.now() - (m.speechEnd ?? performance.now());
-      const metrics = { stt: m.transcript && m.speechEnd ? Math.round(m.transcript - m.speechEnd) : undefined, ttft: m.firstToken && m.transcript ? Math.round(m.firstToken - m.transcript) : undefined, firstAudio: m.firstAudio && m.speechEnd ? Math.round(m.firstAudio - m.speechEnd) : undefined, total: Math.round(total) };
+      const metrics = { stt: m.transcript && m.speechEnd ? Math.round(m.transcript - m.speechEnd) : undefined, ttft: m.firstToken && m.transcript ? Math.round(m.firstToken - m.transcript) : undefined, firstAudio: m.firstAudio && m.speechEnd ? Math.round(m.firstAudio - m.speechEnd) : undefined, total: m.speechEnd ? Math.round(performance.now() - m.speechEnd) : undefined };
       setTurns((ts) => ts.map((x, i) => (i === ts.length - 1 ? { ...x, m: metrics } : x)));
-      if (api.mode === 'local') void api.req('/api/voice/metrics', { method: 'POST', json: { sttMs: metrics.stt ?? null, ttftMs: metrics.ttft ?? null, firstAudioMs: metrics.firstAudio ?? null, totalMs: metrics.total ?? null } }).catch(() => {});
-      if (!playing.current && !queue.current.length && phaseRef.current !== 'off') setP('listening');
+      if (local) void api.req('/api/voice/metrics', { method: 'POST', json: { sttMs: metrics.stt ?? null, ttftMs: metrics.ttft ?? null, firstAudioMs: metrics.firstAudio ?? null, totalMs: metrics.total ?? null } }).catch(() => {});
+      if (!playing.current && !queue.current.length && ph.current !== 'off') setP('listening');
     }
-  }), [onEvent, enqueue, api, setP]);
+  }), [onEvent, enqueue, api, local, setP]);
 
   const handleTranscript = useCallback(async (text: string) => {
-    const clean = text.trim();
-    if (!clean || clean.length < 2) { setP('listening'); return; }
+    const clean = text.replace(/\[.*?\]/g, '').trim();
+    if (clean.length < 2) { if (ph.current !== 'off') setP('listening'); return; }
     t.current.transcript = performance.now();
     setInterim('');
     setTurns((ts) => [...ts.slice(-20), { user: clean, jarvis: '', m: {} }]);
-    if (/^(encerrar|desligar|tchau jarvis|finalizar) (a )?(chamada|liga[cç][aã]o)?/i.test(clean)) { void end(); return; }
+    if (/^(encerrar|desligar|finalizar|tchau jarvis)\b/i.test(clean)) { void end(); return; }
     setP('thinking');
     buf.current = '';
-    msgId.current = await chat.send(clean);
+    msgId.current = await chat.send(clean, undefined, mode);
+    if (!msgId.current) setP('listening');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat, setP]);
+  }, [chat, mode, setP]);
 
-  // ---------- chamada ----------
   const start = useCallback(async () => {
-    if (phaseRef.current !== 'off') return;
+    if (ph.current !== 'off') return;
+    setError(null);
+    if (conn !== 'online') return setError('O Jarvis está offline. Verifique se o aplicativo está aberto no computador.');
+    if (!sttAvailable) return setError(isDesktopApp() ? 'O reconhecimento de voz local ainda não está instalado. Clique em “Instalar reconhecimento de voz” abaixo (cerca de 150 MB).' : 'Este navegador não oferece reconhecimento de voz. Use o Chrome/Edge ou o app do computador.');
+    setP('starting');
+    ttsFailed.current = false;
     try {
-      if (conn !== 'online') throw new Error('O JARVIS está offline.');
-      const useBrowserStt = !coreStt;
-      if (useBrowserStt && !browserRecognition()) throw new Error('Este navegador não tem reconhecimento de voz e o PC não tem whisper instalado.');
       mic.current = await openMic({
-        sensitivity: () => (phaseRef.current === 'speaking' ? 6 : 3),
+        // Durante a fala do Jarvis o limiar sobe bastante: só voz humana próxima interrompe (evita eco).
+        sensitivity: () => (ph.current === 'speaking' ? 7 : 3),
+        minSpeechMs: 300,
         onSpeechStart: () => {
-          if (mutedRef.current) return;
-          if (phaseRef.current === 'speaking') stopSpeaking(); // interrupção (barge-in)
-          if (!useBrowserStt && phaseRef.current !== 'thinking') setP('listening');
+          if (!micOnRef.current) return;
+          if (ph.current === 'speaking') stopSpeaking();
+          if (coreStt && ph.current !== 'thinking' && ph.current !== 'transcribing') setP('listening');
         },
         onSpeechEnd: async (wav) => {
-          if (mutedRef.current || useBrowserStt || phaseRef.current === 'thinking') return;
+          if (!micOnRef.current || !coreStt || ph.current === 'thinking' || ph.current === 'transcribing') return;
           t.current = { speechEnd: performance.now() };
           setP('transcribing');
           try {
@@ -183,18 +205,18 @@ export function VoiceView() {
             if (!r.ok) throw new Error(j.error);
             await handleTranscript(j.text);
           } catch (e) {
-            notify('err', `Transcrição: ${(e as Error).message}`);
+            setError(`Falha ao transcrever: ${(e as Error).message}`);
             setP('listening');
           }
         },
       });
       await mic.current.ctx.resume();
-      if (useBrowserStt) {
+      if (!coreStt) {
         const r = browserRecognition()!;
         rec.current = r;
-        r.onspeechstart = () => { if (phaseRef.current === 'speaking') stopSpeaking(); };
+        r.onspeechstart = () => { if (ph.current === 'speaking') stopSpeaking(); };
         r.onresult = (ev) => {
-          if (mutedRef.current) return;
+          if (!micOnRef.current || ph.current === 'speaking') return;
           let fin = '', tmp = '';
           for (let i = ev.resultIndex; i < ev.results.length; i++) {
             const res = ev.results[i]!;
@@ -202,23 +224,20 @@ export function VoiceView() {
             else tmp += res[0].transcript;
           }
           setInterim(tmp);
-          if (fin && phaseRef.current !== 'thinking') {
-            t.current = { speechEnd: performance.now(), transcript: performance.now() };
-            void handleTranscript(fin);
-          }
+          if (fin && ph.current !== 'thinking') { t.current = { speechEnd: performance.now(), transcript: performance.now() }; void handleTranscript(fin); }
         };
-        r.onerror = (ev) => { if (ev.error !== 'no-speech' && ev.error !== 'aborted') notify('err', `Reconhecimento: ${ev.error}`); };
-        r.onend = () => { if (phaseRef.current !== 'off') try { r.start(); } catch {} };
+        r.onerror = (ev) => { if (!['no-speech', 'aborted'].includes(ev.error)) setError(ev.error === 'not-allowed' ? micError({ name: 'NotAllowedError' }) : `Reconhecimento de voz: ${ev.error}`); };
+        r.onend = () => { if (ph.current !== 'off') try { r.start(); } catch {} };
         r.start();
       }
       setP('listening');
-      enqueue('Estou ouvindo.');
+      enqueue('Pode falar.');
     } catch (e) {
-      notify('err', (e as Error).message);
+      setError(micError(e));
       void end();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, coreStt, conn, handleTranscript, notify, setP, stopSpeaking, enqueue]);
+  }, [api, coreStt, conn, sttAvailable, handleTranscript, setP, stopSpeaking, enqueue]);
 
   const end = useCallback(async () => {
     setP('off');
@@ -230,96 +249,112 @@ export function VoiceView() {
     if (msgId.current) chat.cancel();
     msgId.current = null;
     setLevel(0);
+    setInterim('');
   }, [chat, setP, stopSpeaking]);
 
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
-      setLevel(phaseRef.current === 'speaking' ? ttsLevel.current : mic.current ? mic.current.level() : 0);
-      raf = requestAnimationFrame(loop);
-    };
+    const loop = () => { setLevel(ph.current === 'speaking' ? ttsLevel.current : mic.current && micOnRef.current ? mic.current.level() : 0); raf = requestAnimationFrame(loop); };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
   useEffect(() => {
-    if (location.hash.includes('auto=1') && !vs.loading) {
-      history.replaceState(null, '', '#/voice');
-      void start();
-    }
+    if (location.hash.includes('auto=1') && !vs.loading) { history.replaceState(null, '', '#/voice'); void start(); }
   }, [vs.loading, start]);
   useEffect(() => () => { void end(); }, [end]);
   useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape' && phaseRef.current !== 'off') void end(); };
+    const k = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && ph.current !== 'off') void end();
+      if (e.key === ' ' && ph.current === 'speaking' && (e.target as HTMLElement).tagName !== 'INPUT') { e.preventDefault(); stopSpeaking(); setP('listening'); }
+    };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [end]);
+  }, [end, stopSpeaking, setP]);
 
-  const visual: CoreVisualState = phase === 'off' ? (conn === 'online' ? 'idle' : 'offline') : phase === 'speaking' ? 'speaking' : phase === 'listening' ? 'listening' : 'thinking';
+  const sphere: SphereState = error ? 'error' : conn !== 'online' ? 'offline' : phase === 'off' || phase === 'starting' ? 'idle' : phase === 'speaking' ? 'speaking' : phase === 'listening' ? 'listening' : 'thinking';
+  const LABEL: Record<Phase, string> = { off: 'Pronto para conversar', starting: 'Preparando o microfone…', listening: micOn ? 'Ouvindo' : 'Microfone silenciado', transcribing: 'Entendendo', thinking: 'Pensando', speaking: 'Falando' };
   const last = turns.at(-1);
-  const PHASE_LABEL: Record<Phase, string> = { off: 'Chamada encerrada', listening: 'Ouvindo…', transcribing: 'Transcrevendo…', thinking: 'Pensando…', speaking: 'Falando…' };
+  const install = (component: 'whisper' | 'piper') => api.req('/api/voice/install', { method: 'POST', json: { component } }).then(() => { notify('ok', 'Instalação iniciada'); void installs.reload(); }).catch((e) => notify('err', e.message));
+  useEffect(() => { if (Object.values(installs.data ?? {}).some((x) => x.status === 'instalado')) void vs.reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [JSON.stringify(installs.data)]);
 
   return (
-    <div className="min-h-full flex flex-col items-center px-4 py-6">
-      <div className="flex flex-wrap justify-center gap-1.5">
-        <Badge tone={coreStt ? 'ok' : 'neutral'}><Mic className="size-3" />{coreStt ? `STT local: ${vs.data?.stt.engine}` : 'STT do navegador'}</Badge>
-        <Badge tone={coreTts ? 'ok' : 'neutral'}><Volume2 className="size-3" />{coreTts ? 'Voz local: Piper' : 'Voz do sistema'}</Badge>
-        {phase !== 'off' && <Badge tone="orange" pulse><Mic className="size-3" />Microfone ativo</Badge>}
-      </div>
-      <div className="relative mt-4">
-        <JarvisCore state={visual} level={muted ? 0 : level} size={Math.min(380, typeof window !== 'undefined' ? window.innerWidth - 40 : 380)} />
-      </div>
-      <div className="font-display tracking-[0.2em] text-[13px] text-orange-soft glow-text" aria-live="polite">{PHASE_LABEL[phase]}</div>
+    <div className="relative h-full overflow-hidden bg-[radial-gradient(1000px_600px_at_50%_35%,rgba(255,109,10,0.10),transparent_65%)]">
+      <a href="#/chat" className="absolute left-4 top-4 z-10 press flex items-center gap-1.5 rounded-lg px-2.5 h-8 text-[12.5px] text-muted hover:text-fg hover:bg-white/5"><ArrowLeft className="size-4" />Voltar</a>
+      <div className="absolute right-4 top-4 z-10"><ModeSelector value={mode} onChange={setMode} compact /></div>
+      <div className="h-full overflow-y-auto scroll-thin flex flex-col items-center px-4 pt-14 pb-8">
+        <VoiceSphere state={sphere} level={micOn || phase === 'speaking' ? level : 0} size={typeof window !== 'undefined' ? Math.min(360, window.innerWidth - 32) : 360} />
+        <div className="mt-1 font-display tracking-[0.22em] text-[12.5px] uppercase text-orange-soft" aria-live="polite">{LABEL[phase]}</div>
 
-      {captions && phase !== 'off' && (
-        <div className="mt-4 w-full max-w-2xl min-h-[84px] text-center space-y-2" aria-live="polite">
-          {(interim || last?.user) && <p className="text-[15px] text-muted">“{interim || last?.user}”</p>}
-          {last?.jarvis && <p className="text-[16px] leading-relaxed text-fg line-clamp-4">{speakable(last.jarvis)}</p>}
-        </div>
-      )}
+        {captions && phase !== 'off' && (
+          <div className="mt-5 w-full max-w-2xl min-h-[96px] text-center space-y-2.5" aria-live="polite">
+            {(interim || last?.user) && <p className="text-[15px] text-muted">“{interim || last?.user}”</p>}
+            {last?.jarvis && <p className="text-[17px] leading-relaxed text-fg line-clamp-4">{speakable(last.jarvis)}</p>}
+          </div>
+        )}
 
-      <div className="mt-6 flex items-center gap-3">
-        {phase === 'off' ? (
-          <button onClick={start} className="inline-flex items-center gap-3 rounded-full bg-orange text-black h-14 pl-4 pr-7 font-display font-semibold tracking-[0.14em] shadow-[0_0_50px_-10px_#ff6a00] hover:bg-orange-glow transition">
-            <Phone className="size-5" />LIGAR PARA JARVIS
-          </button>
-        ) : (
-          <>
-            <button aria-label={muted ? 'Ativar microfone' : 'Silenciar microfone'} onClick={() => setMuted((m) => !m)} className={cx('grid place-items-center size-12 rounded-full border transition', muted ? 'bg-err/15 border-err/40 text-err' : 'border-line-strong bg-white/5')}>
-              {muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+        {error && <div role="alert" className="mt-5 max-w-lg flex gap-2 rounded-xl border border-err/30 bg-err/[0.07] px-4 py-3 text-[13px] text-err"><AlertTriangle className="size-4 shrink-0 mt-0.5" />{error}</div>}
+
+        <div className="mt-7 flex items-center gap-3">
+          {phase === 'off' ? (
+            <button onClick={start} className="press inline-flex items-center gap-3 rounded-full bg-gradient-to-b from-orange to-[#e85d00] text-black h-14 pl-5 pr-7 font-display font-semibold text-[15px] shadow-[0_10px_50px_-12px_rgba(255,109,10,0.9)]">
+              <AudioLines className="size-5" />Falar com Jarvis
             </button>
-            <button aria-label="Encerrar chamada" onClick={end} className="grid place-items-center size-14 rounded-full bg-err text-white shadow-[0_0_40px_-10px_#ff5d67]"><PhoneOff className="size-6" /></button>
-            <button aria-label="Legendas" onClick={() => setCaptions((c) => !c)} className={cx('grid place-items-center size-12 rounded-full border transition', captions ? 'border-orange/50 text-orange' : 'border-line-strong text-muted')}><Captions className="size-5" /></button>
-          </>
+          ) : (
+            <>
+              <RoundBtn label={micOn ? 'Silenciar microfone' : 'Ativar microfone'} on={micOn} onClick={() => setMicOn((m) => !m)}>{micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}</RoundBtn>
+              <button aria-label="Encerrar conversa" onClick={end} className="press grid place-items-center size-16 rounded-full bg-err text-white shadow-[0_10px_40px_-10px_rgba(255,93,103,0.8)]"><PhoneOff className="size-6" /></button>
+              <RoundBtn label={speakerOn ? 'Desativar voz do Jarvis' : 'Ativar voz do Jarvis'} on={speakerOn} onClick={() => { if (speakerOn) stopSpeaking(); setSpeakerOn((s) => !s); }}>{speakerOn ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}</RoundBtn>
+            </>
+          )}
+        </div>
+        <div className="mt-3 flex items-center gap-4 text-[12px] text-dim">
+          <button onClick={() => setCaptions((c) => !c)} className={cx('flex items-center gap-1.5 hover:text-fg', captions && 'text-muted')}><Captions className="size-4" />Transcrição {captions ? 'ligada' : 'desligada'}</button>
+          {phase === 'speaking' && <span>Espaço ou fale para interromper</span>}
+          {phase !== 'off' && <span>Esc encerra</span>}
+        </div>
+
+        {/* Motores de voz: estado real e instalação */}
+        <div className="mt-10 w-full max-w-2xl grid gap-3 sm:grid-cols-2">
+          <EngineCard title="Ouvir (reconhecimento)" ok={coreStt || (!isDesktopApp() && sttAvailable)}
+            detail={coreStt ? `Local: ${vs.data?.stt.engine}` : !local ? 'Reconhecimento do navegador' : isDesktopApp() ? 'Não instalado' : 'Reconhecimento do navegador'}
+            action={local && vs.data?.installable.whisper ? <InstallBtn st={installs.data?.whisper} onClick={() => install('whisper')} label="Instalar reconhecimento de voz" /> : null} />
+          <EngineCard title="Falar (voz do Jarvis)" ok={coreTts}
+            detail={vs.data?.elevenlabs.configured ? 'ElevenLabs (voz premium)' : vs.data?.tts.engine ? `Piper local · ${vs.data.tts.voices[0] ?? ''}` : `Voz do sistema${bestBrowserVoice() ? ` · ${bestBrowserVoice()!.name}` : ''}`}
+            action={local && vs.data?.installable.piper ? <InstallBtn st={installs.data?.piper} onClick={() => install('piper')} label="Instalar voz natural" /> : local ? <a href="#/settings/voice" className="text-[12px] text-orange-soft hover:underline">Ajustar voz</a> : null} />
+        </div>
+
+        {turns.some((x) => x.m.total) && (
+          <div className="mt-4 w-full max-w-2xl surface rounded-xl p-3">
+            <div className="label-tech mb-2">Latência medida (ms)</div>
+            <table className="w-full text-[11.5px] font-mono">
+              <thead className="text-dim"><tr><th className="text-left font-normal">fala</th><th className="font-normal">transcrição</th><th className="font-normal">1º token</th><th className="font-normal">1º áudio</th><th className="font-normal">total</th></tr></thead>
+              <tbody>{turns.filter((x) => x.m.total).slice(-5).map((x, i) => <tr key={i} className="text-center"><td className="text-left text-muted truncate max-w-[140px]">{x.user.slice(0, 22)}</td><td>{x.m.stt ?? '—'}</td><td>{x.m.ttft ?? '—'}</td><td>{x.m.firstAudio ?? '—'}</td><td>{x.m.total}</td></tr>)}</tbody>
+            </table>
+          </div>
         )}
       </div>
-      {phase === 'speaking' && <Button size="sm" variant="ghost" className="mt-2" onClick={stopSpeaking}>Interromper resposta</Button>}
-
-      <div className="mt-8 w-full max-w-4xl grid gap-4 md:grid-cols-2">
-        <Panel title="Ajustes de voz" icon={<Volume2 className="size-4" />}>
-          <div className="space-y-3 text-[12.5px]">
-            <label className="block"><span className="label-tech">Voz</span><Select className="w-full mt-1" value={voice} onChange={setVoice} options={voices.length ? voices : [{ value: '', label: 'Padrão do sistema' }]} /></label>
-            <label className="block"><span className="label-tech">Velocidade {speed.toFixed(2)}×</span>
-              <input type="range" min={0.7} max={1.6} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} className="w-full accent-[#ff6a00] mt-1" />
-            </label>
-            {vs.data && !coreStt && <p className="text-dim">{vs.data.stt.detail}</p>}
-            {vs.data && !coreTts && <p className="text-dim">{vs.data.tts.detail}</p>}
-            <p className="text-dim">Atalhos: <b>Esc</b> encerra · fale por cima da resposta para interromper · diga “encerrar chamada”.</p>
-          </div>
-        </Panel>
-        <Panel title="Diagnóstico de latência (medido)" icon={<Gauge className="size-4" />}>
-          {!turns.some((x) => x.m.total) ? <p className="text-[12.5px] text-muted">As medidas reais de cada turno aparecem aqui.</p> : (
-            <table className="w-full text-[11.5px] font-mono">
-              <thead className="text-dim"><tr><th className="text-left font-normal">turno</th><th className="font-normal">STT</th><th className="font-normal">1º token</th><th className="font-normal">1º áudio</th><th className="font-normal">total</th></tr></thead>
-              <tbody>
-                {turns.filter((x) => x.m.total).slice(-6).map((x, i) => (
-                  <tr key={i} className="text-center"><td className="text-left text-muted truncate max-w-[120px]">{x.user.slice(0, 18)}</td><td>{x.m.stt ?? '—'}</td><td>{x.m.ttft ?? '—'}</td><td>{x.m.firstAudio ?? '—'}</td><td>{x.m.total}</td></tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          <p className="mt-2 text-[10.5px] text-dim">ms · STT = fim da fala → texto · 1º token = texto → primeira palavra do modelo · 1º áudio = fim da fala → início da resposta falada</p>
-        </Panel>
-      </div>
     </div>
+  );
+}
+
+function RoundBtn({ label, on, onClick, children }: { label: string; on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button aria-label={label} title={label} onClick={onClick} className={cx('press grid place-items-center size-12 rounded-full border', on ? 'border-line-strong bg-white/[0.06] text-fg' : 'border-err/40 bg-err/15 text-err')}>{children}</button>;
+}
+function EngineCard({ title, ok, detail, action }: { title: string; ok: boolean; detail: string; action: React.ReactNode }) {
+  return (
+    <div className="surface rounded-xl p-3.5">
+      <div className="flex items-center gap-2"><span className={cx('size-2 rounded-full', ok ? 'bg-ok' : 'bg-amber')} /><span className="text-[13px] font-medium">{title}</span></div>
+      <div className="mt-1 text-[12px] text-dim">{detail}</div>
+      {action && <div className="mt-2.5">{action}</div>}
+    </div>
+  );
+}
+function InstallBtn({ st, onClick, label }: { st?: { status: string; progress: number; error?: string }; onClick: () => void; label: string }) {
+  if (st?.status && st.status !== 'erro' && st.status !== 'instalado') return <div className="text-[12px] text-muted flex items-center gap-2"><Loader2 className="size-3.5 animate-spin text-orange" />{st.status} {st.progress ? `${st.progress}%` : ''}</div>;
+  return (
+    <>
+      <Button size="sm" icon={<Download className="size-3.5" />} onClick={onClick}>{label}</Button>
+      {st?.error && <div className="mt-1 text-[11.5px] text-err">{st.error}</div>}
+    </>
   );
 }

@@ -4,8 +4,10 @@ export type { CoreEvent, DeviceStatus, Task, Approval, Memory };
 export type Mode = 'local' | 'remote';
 export type Conn = 'connecting' | 'online' | 'offline' | 'unauthenticated' | 'no-device';
 
-export type ConversationSummary = { id: string; title: string; updatedAt: string; messageCount?: number; origin?: string };
-export type ChatMessage = { id: string; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; createdAt: string; metrics?: Record<string, unknown> | null; toolCalls?: unknown };
+export type ConversationSummary = { id: string; title: string; updatedAt: string; messageCount?: number; origin?: string; pinned?: boolean; projectId?: string | null };
+export type ChatMessage = { id: string; seq?: number; role: 'user' | 'assistant' | 'system' | 'tool'; content: string; createdAt: string; metrics?: Record<string, unknown> | null; toolCalls?: unknown };
+export type ReasoningMode = 'fast' | 'balanced' | 'deep';
+export type ChatOptions = { mode?: ReasoningMode; images?: string[] };
 
 export type StatusView = {
   device: DeviceStatus | null;
@@ -24,7 +26,8 @@ export interface JarvisApi {
   subscribe(fn: (e: CoreEvent) => void): () => void;
   onConn(fn: (c: Conn, detail?: string) => void): () => void;
   status(): Promise<StatusView>;
-  chat(text: string, conversationId: string | null): Promise<{ conversationId: string; messageId: string }>;
+  chat(text: string, conversationId: string | null, opts?: ChatOptions): Promise<{ conversationId: string; messageId: string }>;
+  truncate?(conversationId: string, fromSeq: number): Promise<void>;
   cancelMessage(messageId: string): Promise<void>;
   conversations(): Promise<ConversationSummary[]>;
   conversation(id: string): Promise<ChatMessage[]>;

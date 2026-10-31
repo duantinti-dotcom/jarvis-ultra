@@ -191,6 +191,14 @@ export function buildRoutes(core: Core) {
     return { disabled: core.memory.disabledCategories() };
   });
   r.get('/api/projects', () => core.db.all('SELECT * FROM projects ORDER BY updated_at DESC'));
+  r.post('/api/projects', async (c) => {
+    const b = parse(z.object({ name: z.string().min(1).max(120), path: z.string().optional(), description: z.string().max(1000).optional() }), await c.body());
+    return core.tools.invoke({ tool: 'projects.register', args: b, origin: 'local' });
+  });
+  r.del('/api/projects/:id', (c) => {
+    core.db.run('DELETE FROM projects WHERE id = ?', c.params.id!);
+    return { ok: true };
+  });
 
   // ---------- modelos ----------
   r.get('/api/models', async () => {

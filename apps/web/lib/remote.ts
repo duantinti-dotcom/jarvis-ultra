@@ -121,6 +121,7 @@ export function createRemoteApi(deviceId: string): JarvisApi {
     },
     async chat(text, conversationId) {
       ensureOnline();
+      if (!text.trim()) throw new Error('Pelo site, envie texto (imagens só no app do computador).');
       return command(deviceId, { kind: 'chat', text, conversationId });
     },
     async cancelMessage() {},

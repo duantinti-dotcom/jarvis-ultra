@@ -17,3 +17,4 @@ apps/desktop/src-tauri/resources
 apps/desktop/src-tauri/gen
 apps/desktop/src-tauri/target
 services/jarvis-core/test-results
+apps/web/public/monaco

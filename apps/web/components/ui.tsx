@@ -28,7 +28,7 @@ export function Button({ variant = 'subtle', size = 'md', loading, icon, classNa
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange disabled:opacity-45 disabled:cursor-not-allowed active:scale-[0.98]',
         size === 'sm' ? 'h-8 px-3 text-[12.5px]' : 'h-10 px-4 text-[13.5px]',
-        variant === 'primary' && 'bg-orange text-black hover:bg-orange-glow shadow-[0_0_24px_-6px_rgba(255,106,0,0.7)]',
+        variant === 'primary' && 'bg-gradient-to-b from-orange to-[#e85d00] text-black hover:brightness-110 shadow-[0_8px_24px_-10px_rgba(255,109,10,0.8)]',
         variant === 'subtle' && 'bg-white/[0.05] border border-line hover:border-line-strong hover:bg-white/[0.08] text-fg',
         variant === 'ghost' && 'text-muted hover:text-fg hover:bg-white/[0.05]',
         variant === 'danger' && 'bg-err/12 text-err border border-err/30 hover:bg-err/20',

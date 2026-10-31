@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
-    "build": "next build",
+    "dev": "node scripts/copy-monaco.mjs && next dev -p 3000",
+    "build": "node scripts/copy-monaco.mjs && next build",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs"
   },
@@ -13,8 +13,10 @@
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@jarvis/contracts": "workspace:*",
+    "@monaco-editor/react": "^4.7.0",
     "@supabase/supabase-js": "^2.118.0",
     "lucide-react": "^1.65.0",
+    "monaco-editor": "^0.57.0",
     "motion": "^14.9.0",
     "next": "16.4.3",
     "react": "19.3.1",

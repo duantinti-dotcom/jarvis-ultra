@@ -1,11 +1,11 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { CoreEvent, CoreVisualState, Approval, GenerationMetrics } from '@jarvis/contracts';
-import type { JarvisApi, Conn, StatusView, ChatMessage } from './types';
+import type { CoreEvent, CoreVisualState, Approval } from '@jarvis/contracts';
+import type { JarvisApi, Conn, StatusView } from './types';
 
-export type ToolActivity = { callId: string; tool: string; args?: unknown; ok?: boolean; summary?: string; durationMs?: number; running: boolean };
-export type LiveMessage = ChatMessage & { streaming?: boolean; tools?: ToolActivity[]; metrics?: GenerationMetrics | null; error?: string };
 export type Notice = { id: number; tone: 'ok' | 'err' | 'warn' | 'orange'; text: string };
+export type StepView = { index: number; tool: string; app?: string; description: string; state: string; at: number };
+export type ActiveTask = { taskId: string; conversationId: string | null; state: string; goal?: string; steps: StepView[]; startedAt: number; updatedAt: number };
 
 type Ctx = {
   api: JarvisApi;
@@ -20,15 +20,10 @@ type Ctx = {
   notices: Notice[];
   notify: (tone: Notice['tone'], text: string) => void;
   capture: { at: number; scope: string } | null;
-  chat: {
-    conversationId: string | null;
-    messages: LiveMessage[];
-    busy: boolean;
-    send: (text: string) => Promise<string | null>;
-    open: (id: string | null) => Promise<void>;
-    cancel: () => void;
-    reloadList: number;
-  };
+  /** Tarefas acompanhadas ao vivo (Desktop Control / Histórico). */
+  tasks: Record<string, ActiveTask>;
+  refreshTick: number;
+  bump: () => void;
   onEvent: (fn: (e: CoreEvent) => void) => () => void;
 };
 
@@ -47,13 +42,10 @@ export function JarvisProvider({ api, children }: { api: JarvisApi; children: Re
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [capture, setCapture] = useState<Ctx['capture']>(null);
-  const [conversationId, setConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<LiveMessage[]>([]);
-  const [reloadList, setReloadList] = useState(0);
-  const activeMsg = useRef<string | null>(null);
-  const convRef = useRef<string | null>(null);
+  const [tasks, setTasks] = useState<Record<string, ActiveTask>>({});
+  const [refreshTick, setRefreshTick] = useState(0);
+  const bump = useCallback(() => setRefreshTick((n) => n + 1), []);
   const visualTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  convRef.current = conversationId;
 
   const notify = useCallback((tone: Notice['tone'], text: string) => {
     const id = Date.now() + Math.random();
@@ -89,38 +81,26 @@ export function JarvisProvider({ api, children }: { api: JarvisApi; children: Re
     api.approvals().then(setApprovals).catch(() => {});
   }, [api, conn]);
 
-  const patchMsg = (id: string, fn: (m: LiveMessage) => LiveMessage) => setMessages((ms) => ms.map((m) => (m.id === id ? fn(m) : m)));
-
   useEffect(() => api.subscribe((e) => {
     switch (e.type) {
-      case 'chat.delta':
-        if (e.conversationId !== convRef.current) return;
-        setMessages((ms) => ms.some((m) => m.id === e.messageId)
-          ? ms.map((m) => (m.id === e.messageId ? { ...m, content: m.content + e.text } : m))
-          : [...ms, { id: e.messageId, role: 'assistant', content: e.text, createdAt: new Date().toISOString(), streaming: true, tools: [] }]);
+      case 'task.update':
+        setTasks((t) => {
+          const cur = t[e.taskId] ?? { taskId: e.taskId, conversationId: null, state: e.state, steps: [], startedAt: Date.now(), updatedAt: Date.now() };
+          const next = { ...t, [e.taskId]: { ...cur, state: e.state, goal: cur.goal ?? e.detail, updatedAt: Date.now() } };
+          // mantém só as 12 mais recentes
+          return Object.fromEntries(Object.entries(next).sort((x, y) => y[1].updatedAt - x[1].updatedAt).slice(0, 12));
+        });
+        if (['completed', 'failed', 'cancelled'].includes(e.state)) setRefreshTick((n) => n + 1);
         break;
-      case 'chat.done':
-        if (e.conversationId === convRef.current) patchMsg(e.messageId, (m) => ({ ...m, streaming: false, metrics: e.metrics }));
-        if (activeMsg.current === e.messageId) activeMsg.current = null;
-        setReloadList((n) => n + 1);
+      case 'task.step':
+        setTasks((t) => {
+          const cur = t[e.taskId] ?? { taskId: e.taskId, conversationId: e.conversationId, state: 'executing', steps: [], startedAt: Date.now(), updatedAt: Date.now() };
+          const steps = cur.steps.filter((s) => s.index !== e.index).concat({ index: e.index, tool: e.tool, app: e.app, description: e.description, state: e.state, at: Date.now() }).sort((a, b) => a.index - b.index);
+          return { ...t, [e.taskId]: { ...cur, conversationId: e.conversationId, steps, updatedAt: Date.now() } };
+        });
         break;
-      case 'chat.error':
-        if (e.conversationId === convRef.current) {
-          setMessages((ms) => ms.some((m) => m.id === e.messageId) ? ms.map((m) => (m.id === e.messageId ? { ...m, streaming: false, error: e.error } : m)) : [...ms, { id: e.messageId, role: 'assistant', content: '', error: e.error, createdAt: new Date().toISOString() }]);
-        }
-        if (activeMsg.current === e.messageId) activeMsg.current = null;
-        break;
-      case 'tool.start':
-        if (e.conversationId !== convRef.current || !activeMsg.current) return;
-        {
-          const mid = activeMsg.current;
-          setMessages((ms) => (ms.some((m) => m.id === mid) ? ms : [...ms, { id: mid, role: 'assistant', content: '', createdAt: new Date().toISOString(), streaming: true, tools: [] }]));
-          patchMsg(mid, (m) => ({ ...m, tools: [...(m.tools ?? []), { callId: e.callId, tool: e.tool, args: e.args, running: true }] }));
-        }
-        break;
-      case 'tool.end':
-        if (e.conversationId !== convRef.current) return;
-        setMessages((ms) => ms.map((m) => (m.tools?.some((t) => t.callId === e.callId) ? { ...m, tools: m.tools.map((t) => (t.callId === e.callId ? { ...t, ok: e.ok, summary: e.summary, durationMs: e.durationMs, running: false } : t)) } : m)));
+      case 'conversation.updated':
+        setRefreshTick((n) => n + 1);
         break;
       case 'approval.request':
         setApprovals((a) => [{ id: e.approvalId, taskId: null, stepId: null, tool: e.tool, args: e.args as Record<string, unknown>, risk: e.risk, reason: e.reason, origin: e.origin, state: 'pending', createdAt: new Date().toISOString(), decidedAt: null }, ...a]);
@@ -149,43 +129,6 @@ export function JarvisProvider({ api, children }: { api: JarvisApi; children: Re
     }
   }), [api, notify, setVisual, refreshStatus]);
 
-  const open = useCallback(async (id: string | null) => {
-    setConversationId(id);
-    convRef.current = id;
-    if (!id) return setMessages([]);
-    try {
-      setMessages((await api.conversation(id)).map((m) => ({ ...m, metrics: (m.metrics as GenerationMetrics) ?? null })));
-    } catch (e) {
-      notify('err', (e as Error).message);
-    }
-  }, [api, notify]);
-
-  const send = useCallback(async (text: string) => {
-    const t = text.trim();
-    if (!t) return null;
-    const tempId = `tmp_${Date.now()}`;
-    setMessages((ms) => [...ms, { id: tempId, role: 'user', content: t, createdAt: new Date().toISOString() }]);
-    setVisual('thinking');
-    try {
-      const r = await api.chat(t, convRef.current);
-      activeMsg.current = r.messageId;
-      if (convRef.current !== r.conversationId) {
-        convRef.current = r.conversationId;
-        setConversationId(r.conversationId);
-      }
-      setReloadList((n) => n + 1);
-      return r.messageId;
-    } catch (e) {
-      setMessages((ms) => [...ms, { id: `err_${Date.now()}`, role: 'assistant', content: '', error: (e as Error).message, createdAt: new Date().toISOString() }]);
-      setVisual('error');
-      return null;
-    }
-  }, [api, setVisual]);
-
-  const cancel = useCallback(() => {
-    if (activeMsg.current) void api.cancelMessage(activeMsg.current);
-  }, [api]);
-
   const decide = useCallback(async (id: string, approve: boolean) => {
     try {
       await api.decide(id, approve);
@@ -195,11 +138,9 @@ export function JarvisProvider({ api, children }: { api: JarvisApi; children: Re
     }
   }, [api, notify]);
 
-  const busy = messages.some((m) => m.streaming) || messages.at(-1)?.role === 'user';
   const value = useMemo<Ctx>(() => ({
-    api, conn, connDetail, status, refreshStatus, visual, setVisual, approvals, decide, notices, notify, capture,
-    chat: { conversationId, messages, busy, send, open, cancel, reloadList }, onEvent: api.subscribe,
-  }), [api, conn, connDetail, status, refreshStatus, visual, setVisual, approvals, decide, notices, notify, capture, conversationId, messages, busy, send, open, cancel, reloadList]);
+    api, conn, connDetail, status, refreshStatus, visual, setVisual, approvals, decide, notices, notify, capture, tasks, refreshTick, bump, onEvent: api.subscribe,
+  }), [api, conn, connDetail, status, refreshStatus, visual, setVisual, approvals, decide, notices, notify, capture, tasks, refreshTick, bump]);
 
   return <C.Provider value={value}>{children}</C.Provider>;
 }

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { ListChecks, RotateCcw, Square, ChevronRight, CheckCircle2, XCircle, Loader2, ShieldAlert } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
+import { useChat } from '@/lib/chat';
 import { Panel, Badge, Button, Empty, fmtTime, cx, ErrorNote } from '@/components/ui';
 import type { Task, TaskStep } from '@jarvis/contracts';
 
@@ -18,11 +19,12 @@ export function TaskStateBadge({ state }: { state: string }) {
 type Detail = Task & { steps: TaskStep[]; calls: { id: string; tool: string; args: string; ok: number; error: string | null; verification: string | null; duration_ms: number; created_at: string }[] };
 
 export function TasksView() {
-  const { api, chat, approvals, decide, notify } = useJarvis();
+  const { api, approvals, decide, notify, refreshTick } = useJarvis();
+  const chat = useChat();
   const [filter, setFilter] = useState('all');
   const [sel, setSel] = useState<string | null>(null);
-  const list = useAsync(() => api.tasks(100), [api, chat.reloadList], 4000);
-  const detail = useAsync<Detail | null>(() => (sel && api.mode === 'local' ? api.req<Detail>(`/api/tasks/${sel}`) : Promise.resolve(null)), [api, sel, chat.reloadList], sel ? 3000 : undefined);
+  const list = useAsync(() => api.tasks(100), [api, refreshTick], 4000);
+  const detail = useAsync<Detail | null>(() => (sel && api.mode === 'local' ? api.req<Detail>(`/api/tasks/${sel}`) : Promise.resolve(null)), [api, sel, refreshTick], sel ? 3000 : undefined);
   const tasks = (list.data ?? []).filter((t) => filter === 'all' || (filter === 'active' ? !['completed', 'failed', 'cancelled'].includes(t.state) : t.state === filter));
 
   return (
