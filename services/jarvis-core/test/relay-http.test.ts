@@ -14,6 +14,15 @@ function fakeSupabase() {
     for await (const c of req) chunks.push(c as Buffer);
     const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
     const send = (s: number, b: unknown) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(b)); };
+    if (req.url?.includes('/auth/v1/token')) {
+      if (body.email !== 'duan@u.jarvisultra.app' || body.password !== 'senhaforte1') return send(400, { error_description: 'Invalid login credentials' });
+      return send(200, { access_token: 'jwt-do-usuario' });
+    }
+    if (req.url?.endsWith('/jarvis_create_pairing_code')) {
+      if (req.headers.authorization !== 'Bearer jwt-do-usuario') return send(401, { message: 'não autenticado' });
+      state.code = 'LOGN2345';
+      return send(200, { code: state.code, expires_at: new Date(Date.now() + 600_000).toISOString() });
+    }
     if (req.url?.endsWith('/jarvis_claim_pairing')) {
       if (body.p_code !== state.code) return send(400, { message: 'código inválido ou expirado' });
       state.code = '';
@@ -77,6 +86,13 @@ describe('relay remoto', () => {
     const get = (id: string) => sb.state.results.find((r) => (r as { id: string }).id === id) as { status: string; result: { error: string } };
     expect(get(bad.id).status).toBe('rejected');
     expect(get(old.id).result.error).toMatch(/expirado/);
+  });
+  it('vincula entrando com usuário e senha, sem código manual', async () => {
+    await expect(core.relay.pairWithLogin(sbUrl, 'anon-key-xxxxxxxxxxxxxxxx', 'duan', 'errada123')).rejects.toThrow(/incorretos/);
+    const r = await core.relay.pairWithLogin(sbUrl, 'anon-key-xxxxxxxxxxxxxxxx', 'Duan', 'senhaforte1');
+    core.relay.stop();
+    expect(r.deviceId).toBe(sb.state.deviceId);
+    expect(JSON.stringify(core.db.raw.prepare('SELECT value FROM settings').all())).not.toContain('senhaforte1');
   });
   it('após revogação o PC para de aceitar comandos e remove a credencial', async () => {
     sb.state.revoked = true;

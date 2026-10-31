@@ -450,6 +450,10 @@ export function buildRoutes(core: Core) {
     const b = parse(z.object({ url: z.string().url().refine((u) => u.startsWith('https://'), 'precisa ser https'), anonKey: z.string().min(20), code: z.string().min(6).max(12), deviceName: z.string().max(60).optional() }), await c.body());
     return core.relay.pair(b.url, b.anonKey, b.code, b.deviceName);
   });
+  r.post('/api/relay/login', async (c) => {
+    const b = parse(z.object({ url: z.string().url().refine((u) => u.startsWith('https://'), 'precisa ser https'), anonKey: z.string().min(20), username: z.string().min(3).max(30), password: z.string().min(8).max(200) }), await c.body());
+    return core.relay.pairWithLogin(b.url, b.anonKey, b.username, b.password);
+  });
   r.post('/api/relay/enable', async (c) => {
     core.relay.setEnabled(parse(z.object({ on: z.boolean() }), await c.body()).on);
     return { enabled: core.relay.enabled };

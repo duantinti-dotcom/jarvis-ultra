@@ -75,7 +75,9 @@ function RemoteDevices() {
         )}
       </Panel>
       <div className="space-y-4">
-        <PairingPanel onPaired={() => devs.reload()} />
+        <Panel title="Conectar outro computador" icon={<Link2 className="size-4" />}>
+          <p className="text-[12.5px] text-muted">No app JARVIS do computador, abra <b>Configurações → Dispositivos</b> e entre com este mesmo usuário e senha. Ele aparece aqui na hora.</p>
+        </Panel>
         <Panel title="Sessão" icon={<LogOut className="size-4" />}>
           <p className="text-[12.5px] text-muted">Conectado como <b className="text-fg">{email}</b>.</p>
           <div className="mt-3 flex gap-2 flex-wrap">
@@ -90,9 +92,10 @@ function RemoteDevices() {
 
 function LocalDevice() {
   const { api, status, refreshStatus, notify } = useJarvis();
-  const [url, setUrl] = useState(SUPABASE_URL);
-  const [anon, setAnon] = useState(SUPABASE_ANON);
-  const [code, setCode] = useState('');
+  const url = SUPABASE_URL;
+  const anon = SUPABASE_ANON;
+  const [user, setUser] = useState('');
+  const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const relay = status?.relay;
@@ -100,8 +103,9 @@ function LocalDevice() {
     setBusy(true);
     setErr(null);
     try {
-      await api.req('/api/relay/pair', { method: 'POST', json: { url, anonKey: anon, code } });
-      notify('ok', 'Computador vinculado ao site');
+      await api.req('/api/relay/login', { method: 'POST', json: { url, anonKey: anon, username: user, password: pass } });
+      setPass('');
+      notify('ok', 'Computador conectado ao site');
       await refreshStatus();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -125,14 +129,15 @@ function LocalDevice() {
         <p className="mt-3 text-[11px] text-dim">O PC abre apenas uma conexão de saída (HTTPS) para o relay. Nenhuma porta é exposta à internet. A credencial do dispositivo fica protegida pelo Windows (DPAPI).</p>
       </Panel>
       {!relay?.config && (
-        <Panel title="Vincular a este site" icon={<Link2 className="size-4" />}>
-          <div className="space-y-2">
-            <label className="block text-[12px]"><span className="label-tech">Endereço do relay (Supabase)</span><Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://xxxx.supabase.co" /></label>
-            <label className="block text-[12px]"><span className="label-tech">Chave pública (anon)</span><Input value={anon} onChange={(e) => setAnon(e.target.value)} placeholder="eyJ…" /></label>
-            <label className="block text-[12px]"><span className="label-tech">Código mostrado no site</span><Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD2345" className="font-mono tracking-[0.3em]" maxLength={12} /></label>
+        <Panel title="Conectar ao celular e ao site" icon={<Link2 className="size-4" />}>
+          <p className="text-[12.5px] text-muted">Entre com o mesmo usuário e senha do site. Pronto: o site e o celular passam a ver este computador. A senha é usada só agora e não fica salva.</p>
+          <form className="mt-3 space-y-2" onSubmit={(e) => { e.preventDefault(); void pair(); }}>
+            <Input value={user} onChange={(e) => setUser(e.target.value)} placeholder="Usuário" autoComplete="username" autoCapitalize="none" aria-label="Usuário" />
+            <Input type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Senha" autoComplete="current-password" aria-label="Senha" />
             <ErrorNote error={err} />
-            <Button variant="primary" className="w-full" loading={busy} disabled={!url || !anon || code.length < 6} onClick={pair}>Vincular</Button>
-          </div>
+            <Button type="submit" variant="primary" className="w-full" loading={busy} disabled={!user || pass.length < 8 || !url || !anon}>Conectar</Button>
+          </form>
+          {(!url || !anon) && <p className="mt-2 text-[11.5px] text-err">Esta versão do app não tem o endereço do relay configurado.</p>}
         </Panel>
       )}
     </div>

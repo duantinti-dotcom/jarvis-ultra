@@ -68,7 +68,7 @@ async function command<T>(deviceId: string, payload: RelayCommand, timeoutMs = 2
   });
 }
 
-export function createRemoteApi(deviceId: string): JarvisApi {
+export function createRemoteApi(deviceId: string | null): JarvisApi {
   const sb = supabase();
   const events = new Emitter<[CoreEvent]>();
   const conn = new Emitter<[Conn, string?]>();
@@ -89,7 +89,16 @@ export function createRemoteApi(deviceId: string): JarvisApi {
   };
 
   // Eventos do PC: Realtime; polling como reserva caso o WebSocket caia.
-  (async () => {
+  // Sem computador vinculado: o app abre normalmente e avisa; quando um PC for vinculado, recarrega sozinho.
+  if (!deviceId) {
+    setTimeout(() => setConn('no-device', 'Nenhum computador vinculado. No app do PC, abra Configurações → Dispositivos e entre com seu usuário e senha.'), 0);
+    setInterval(async () => {
+      const devs = await listDevices().catch(() => []);
+      const d = devs.find((x) => !x.revoked_at);
+      if (d) { localStorage.setItem('jarvis.device', d.id); location.reload(); }
+    }, 5000);
+  }
+  if (deviceId) (async () => {
     const { data } = await sb.from("jarvis_relay_events").select('id').eq('device_id', deviceId).order('id', { ascending: false }).limit(1);
     lastEventId = (data?.[0] as { id: number } | undefined)?.id ?? 0;
     sb.channel(`ev-${deviceId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: "jarvis_relay_events", filter: `device_id=eq.${deviceId}` }, (p) => dispatch(p.new as never)).subscribe();
@@ -100,9 +109,11 @@ export function createRemoteApi(deviceId: string): JarvisApi {
     if (!device || device.revoked_at) setConn('no-device', 'Dispositivo revogado ou removido');
     else setConn(isOnline(device) ? 'online' : 'offline', isOnline(device) ? undefined : 'O computador está offline (desligado, sem internet ou com o JARVIS fechado).');
   };
-  void refreshDevice();
-  setInterval(refreshDevice, 5000);
-  setInterval(async () => {
+  if (deviceId) {
+    void refreshDevice();
+    setInterval(refreshDevice, 5000);
+  }
+  if (deviceId) setInterval(async () => {
     const { data } = await sb.from("jarvis_relay_events").select('id,events').eq('device_id', deviceId).gt('id', lastEventId).order('id').limit(50);
     for (const r of (data ?? []) as { id: number; events: CoreEvent[] }[]) dispatch(r);
   }, 4000);
@@ -122,43 +133,43 @@ export function createRemoteApi(deviceId: string): JarvisApi {
     async chat(text, conversationId) {
       ensureOnline();
       if (!text.trim()) throw new Error('Pelo site, envie texto (imagens só no app do computador).');
-      return command(deviceId, { kind: 'chat', text, conversationId });
+      return command(deviceId!, { kind: 'chat', text, conversationId });
     },
     async cancelMessage() {},
     async conversations() {
       if (!isOnline(device)) return [];
-      return (await command<{ conversations: ConversationSummary[] }>(deviceId, { kind: 'conversations.list' })).conversations;
+      return (await command<{ conversations: ConversationSummary[] }>(deviceId!, { kind: 'conversations.list' })).conversations;
     },
     async conversation(id) {
       ensureOnline();
-      return (await command<{ messages: ChatMessage[] }>(deviceId, { kind: 'conversation.get', conversationId: id })).messages;
+      return (await command<{ messages: ChatMessage[] }>(deviceId!, { kind: 'conversation.get', conversationId: id })).messages;
     },
     async tasks(limit = 30) {
       if (!isOnline(device)) return [];
-      return (await command<{ tasks: Task[] }>(deviceId, { kind: 'tasks.list', limit })).tasks;
+      return (await command<{ tasks: Task[] }>(deviceId!, { kind: 'tasks.list', limit })).tasks;
     },
     async cancelTask(taskId) {
       ensureOnline();
-      await command(deviceId, { kind: 'task.cancel', taskId });
+      await command(deviceId!, { kind: 'task.cancel', taskId });
     },
     async approvals() {
       return [...approvals.values()];
     },
     async decide(approvalId, approve) {
       ensureOnline();
-      return (await command<{ state: string }>(deviceId, { kind: 'approval.respond', approvalId, approve })).state;
+      return (await command<{ state: string }>(deviceId!, { kind: 'approval.respond', approvalId, approve })).state;
     },
     async memories(query) {
       if (!isOnline(device)) return [];
-      return (await command<{ memories: Memory[] }>(deviceId, { kind: 'memory.list', query })).memories;
+      return (await command<{ memories: Memory[] }>(deviceId!, { kind: 'memory.list', query })).memories;
     },
     async emergencyStop() {
       ensureOnline();
-      await command(deviceId, { kind: 'emergency.stop' });
+      await command(deviceId!, { kind: 'emergency.stop' });
     },
     async live() {
       if (!isOnline(device)) return null;
-      return (await command<{ live: Record<string, unknown> }>(deviceId, { kind: 'status.get' })).live;
+      return (await command<{ live: Record<string, unknown> }>(deviceId!, { kind: 'status.get' })).live;
     },
     async req() {
       throw new Error('Disponível somente no aplicativo JARVIS do computador.');

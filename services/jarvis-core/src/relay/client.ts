@@ -84,6 +84,22 @@ export class RelayClient {
     return { deviceId: device_id };
   }
 
+  /**
+   * Vincula entrando com usuário e senha da conta Jarvis (sem código manual).
+   * A senha é usada uma única vez para obter a sessão e gerar o código; nada disso é guardado.
+   */
+  async pairWithLogin(url: string, anonKey: string, username: string, password: string, deviceName = os.hostname()) {
+    const base = normalizeUrl(url);
+    const email = `${username.trim().toLowerCase()}@u.jarvisultra.app`;
+    const tok = await fetch(`${base}/auth/v1/token?grant_type=password`, { method: 'POST', headers: headers(anonKey), body: JSON.stringify({ email, password }) });
+    const tb = (await tok.json().catch(() => ({}))) as { access_token?: string; error_description?: string; msg?: string };
+    if (!tok.ok || !tb.access_token) throw new Error(/invalid/i.test(tb.error_description ?? tb.msg ?? '') ? 'Usuário ou senha incorretos.' : `Não foi possível entrar: ${tb.error_description ?? tb.msg ?? tok.status}`);
+    const r = await fetch(`${base}/rest/v1/rpc/jarvis_create_pairing_code`, { method: 'POST', headers: { ...headers(anonKey), authorization: `Bearer ${tb.access_token}` }, body: '{}' });
+    const code = ((await r.json().catch(() => ({}))) as { code?: string }).code;
+    if (!r.ok || !code) throw new Error('Não foi possível gerar a vinculação.');
+    return this.pair(base, anonKey, code, deviceName);
+  }
+
   unpair(reason = 'desvinculado localmente') {
     this.stop();
     this.db.setSetting('relay.config', null);

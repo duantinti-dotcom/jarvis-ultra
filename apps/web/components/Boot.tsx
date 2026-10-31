@@ -26,6 +26,7 @@ export function Boot() {
     const saved = localStorage.getItem('jarvis.device');
     const chosen = devices.find((d) => d.id === saved) ?? (devices.length === 1 ? devices[0] : undefined);
     if (chosen) setSt({ kind: 'ready', api: createRemoteApi(chosen.id), device: chosen });
+    else if (!devices.length) setSt({ kind: 'ready', api: createRemoteApi(null) });
     else setSt({ kind: 'pick', devices });
   };
 
