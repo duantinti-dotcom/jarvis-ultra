@@ -62,31 +62,40 @@ export function Boot() {
   );
 }
 
+/** Usuário vira um e-mail técnico interno (nunca recebe mensagens). */
+export const usernameToEmail = (u: string) => `${u.trim().toLowerCase()}@u.jarvisultra.app`;
+
 function Login({ onDone }: { onDone: () => void }) {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [err, setErr] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     const sb = supabase();
-    const r = mode === 'in' ? await sb.auth.signInWithPassword({ email, password }) : await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin } });
-    setBusy(false);
-    if (r.error) return setErr(r.error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : r.error.message);
-    if (mode === 'up' && !r.data.session) return setInfo('Conta criada. Confirme o e-mail enviado e depois entre.');
-    onDone();
+    try {
+      if (mode === 'up') {
+        const r = await sb.rpc('jarvis_register', { p_username: username, p_password: password });
+        if (r.error) throw new Error(r.error.message);
+      }
+      const r = await sb.auth.signInWithPassword({ email: usernameToEmail(username), password });
+      if (r.error) throw new Error(r.error.message === 'Invalid login credentials' ? 'Usuário ou senha incorretos.' : r.error.message);
+      onDone();
+    } catch (e2) {
+      setErr((e2 as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <form onSubmit={submit} className="glass rounded-2xl p-5 space-y-3">
       <div className="font-display text-lg">{mode === 'in' ? 'Entrar' : 'Criar conta'}</div>
-      <Input type="email" required autoComplete="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} aria-label="E-mail" />
+      <Input required autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Usuário" value={username} onChange={(e) => setUsername(e.target.value)} aria-label="Usuário" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,29}" title="3 a 30 letras, números, ponto, hífen ou sublinhado" />
       <Input type="password" required minLength={8} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} placeholder="Senha (mín. 8 caracteres)" value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Senha" />
       <ErrorNote error={err} />
-      {info && <div className="text-ok text-[12.5px]">{info}</div>}
       <Button type="submit" variant="primary" className="w-full" loading={busy}>{mode === 'in' ? 'Entrar' : 'Criar conta'}</Button>
       <button type="button" className="w-full text-center text-[12.5px] text-muted hover:text-fg" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
         {mode === 'in' ? 'Não tem conta? Criar agora' : 'Já tenho conta'}

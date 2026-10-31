@@ -49,7 +49,7 @@ function RemoteDevices() {
   const { notify } = useJarvis();
   const devs = useAsync(() => listDevices(), [], 5000);
   const [email, setEmail] = useState('');
-  useEffect(() => { void supabase().auth.getUser().then((u) => setEmail(u.data.user?.email ?? '')); }, []);
+  useEffect(() => { void supabase().auth.getUser().then((u) => setEmail(u.data.user?.email?.replace(/@u\.jarvisultra\.app$/, '') ?? '')); }, []);
   return (
     <div className="p-3 sm:p-5 max-w-[1200px] mx-auto grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <Panel title="Dispositivos vinculados" icon={<Smartphone className="size-4" />} actions={<Button size="sm" variant="ghost" icon={<RefreshCw className="size-3.5" />} onClick={() => devs.reload()}>Atualizar</Button>}>
