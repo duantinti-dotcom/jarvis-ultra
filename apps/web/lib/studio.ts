@@ -134,6 +134,14 @@ export function finishPartial(name: string, content: string): string | null {
 function joinCont(a: string, b: string) {
   const max = Math.min(400, a.length, b.length);
   for (let k = max; k >= 12; k--) if (a.endsWith(b.slice(0, k))) return a + b.slice(k);
+  // a IA voltou alguns trechos e repetiu código já recebido: junta no ponto onde a repetição começa
+  const rep = b.split('\n').find((l) => l.trim().length >= 12);
+  if (rep) {
+    for (let idx = a.lastIndexOf(rep); idx >= 0; idx = idx > 0 ? a.lastIndexOf(rep, idx - 1) : -1) {
+      const tail = a.slice(idx);
+      if (b.startsWith(tail) || b.replace(/\s+/g, ' ').startsWith(tail.replace(/\s+/g, ' ').trimEnd())) return a.slice(0, idx) + b;
+    }
+  }
   // a última linha ficou pela metade e o modelo a reescreveu inteira: troca a linha
   const cut = a.lastIndexOf('\n');
   const tail = a.slice(cut + 1).trim();

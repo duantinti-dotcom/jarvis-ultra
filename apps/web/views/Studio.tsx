@@ -71,6 +71,7 @@ export function StudioView() {
   const send = (raw?: string) => {
     const t = (raw ?? text).trim();
     if (!t || busy || !ready) return;
+    autoFix.current = 0;
     setText('');
     setErrors([]);
     void studioSend(ready, t);
@@ -116,6 +117,18 @@ export function StudioView() {
     return () => window.removeEventListener('message', on);
   }, [viewFiles, notify]);
   useEffect(() => setErrors([]), [shownDoc]);
+  // Erro no preview depois de gerar: o Jarvis corrige sozinho (até 2 vezes por pedido seu).
+  const autoFix = useRef(0);
+  useEffect(() => {
+    if (busy || !errors.length || autoFix.current >= 2 || !project?.messages.length || !ready) return;
+    const t = setTimeout(() => {
+      autoFix.current += 1;
+      const list = errors.slice(0, 6).map((e) => `- ${e}`).join('\n');
+      setErrors([]);
+      void studioSend(ready, `O preview mostrou estes erros no console. Encontre a causa (por exemplo variáveis ou funções declaradas duas vezes, elementos inexistentes, código duplicado) e reenvie COMPLETOS só os arquivos corrigidos, sem mudar o visual:\n${list}`);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [errors, busy, ready, project?.messages.length]);
 
   const download = () => {
     if (!project) return;

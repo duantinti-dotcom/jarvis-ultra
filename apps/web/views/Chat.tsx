@@ -8,7 +8,7 @@ import { cloudAiStatus } from '@/lib/cloud';
 import { queueStudioPrompt } from '@/lib/studioStore';
 import { CloudLogin } from '@/components/CloudLogin';
 
-const SITE_RE = /\b(cri[ae]r?|fa[çc]a|fazer|gere|gerar|monte|montar|desenvolva|desenvolver|construa|construir|programe|programar|quero)\b[^.?!\n]{0,60}\b(site|website|landing ?page|p[áa]gina (web|de vendas|inicial)|portf[óo]lio|loja (virtual|online)|app web|aplicativo web|sistema web|jogo (web|em html|no navegador))\b/i;
+const SITE_RE = /\b(cri[ae]r?|fa[çc]a|fazer|gere|gerar|monte|montar|desenvolva|desenvolver|construa|construir|programe|programar|quero)\b[^.?!\n]{0,60}\b(site|website|landing ?page|p[áa]gina (web|de vendas|inicial)|portf[óo]lio|loja( virtual| online)?|app web|aplicativo web|sistema( web)?|jogo (web|em html|no navegador)|card[áa]pio( digital)?|menu digital|dashboard|painel|blog|cat[áa]logo|calculadora|formul[áa]rio|clone d[oe]|p[áa]gina)\b/i;
 import { ModeSelector, MODE_INFO } from '@/components/ModeSelector';
 import { JarvisCore } from '@/components/JarvisCore';
 import { Input, cx, fmtAgo } from '@/components/ui';
@@ -353,9 +353,9 @@ function IconBtn({ label, onClick, children }: { label: string; onClick: () => v
 /** Raciocínio ao vivo, como no Claude: aberto enquanto pensa, recolhido ("Pensou por X s") depois. */
 function Thinking({ text, live, ms }: { text: string; live: boolean; ms?: number }) {
   const [open, setOpen] = useState(false);
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (live && box.current) box.current.scrollTop = box.current.scrollHeight; }, [text, live]);
-  const show = live || open;
+  // Como no Claude: enquanto pensa, só o indicador (o texto bruto correndo parecia bug);
+  // depois, "Pensou por X s" recolhido, que abre ao clicar.
+  const show = !live && open;
   return (
     <div className="mb-2.5">
       <button onClick={() => !live && setOpen((v) => !v)} className={cx('flex items-center gap-2 text-[12.5px]', live ? 'cursor-default' : 'text-dim hover:text-muted')}>
@@ -364,7 +364,7 @@ function Thinking({ text, live, ms }: { text: string; live: boolean; ms?: number
         {!live && <ChevronDown className={cx('size-3.5 transition-transform', open && 'rotate-180')} />}
       </button>
       {show && (
-        <div ref={box} className="enter mt-1.5 ml-1 pl-3 border-l-2 border-orange/25 max-h-40 overflow-y-auto scroll-thin text-[12.5px] leading-relaxed text-dim whitespace-pre-wrap">{text}</div>
+        <div className="enter mt-1.5 ml-1 pl-3 border-l-2 border-orange/25 max-h-40 overflow-y-auto scroll-thin text-[12.5px] leading-relaxed text-dim whitespace-pre-wrap">{text}</div>
       )}
     </div>
   );

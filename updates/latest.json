@@ -1,11 +1,11 @@
 {
-  "version": "0.2.8",
-  "notes": "Várias IAs grátis somadas, raciocínio ao vivo, conversa sempre na nuvem rápida, Jarvis Code mais estável e atualização automática.",
-  "pub_date": "2026-11-02T19:06:26.144Z",
+  "version": "0.2.9",
+  "notes": "Pensamento discreto, Jarvis Code cria tudo direto sem pedir dados e corrige sozinho erros do preview; cardápios, lojas e dashboards abrem no Code.",
+  "pub_date": "2026-11-02T19:35:48.785Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRTzhuVUwvUnlIaWxId203bEluaG1PK1R5YXBZRVBaWkRxTUpVYi9ESno1R0hOanUveFBQbk91Y1FvVFpwdHI4ZnJpdXVkM2NsQzJCbkxmSlU2RWFJWmRDTzBoa2swc1FJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNjQ2MzU5CWZpbGU6SkFSVklTIFVMVFJBXzAuMi44X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjIuOAptV3paNUZhMWVLcUxMb2dGeDRENHhLWEVXL1NDS3MwRy9heUNYOHhpa2hDSXNVbWdHYW4xZFY3VEUxVTFWejErdTBxZkpMbHlwNTZmRzhPakdqaWJCQT09Cg==",
-      "url": "https://jarvis-ultra-iota.vercel.app/updates/JARVIS-ULTRA_0.2.8_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRTzhuVUwvUnlIaWdCdkdOMXNjaHo4Vkxha2VqSSszZzhKYzZ5YTR0SHc5ZnRVakpJUWlYdnhjUnpaOTVBcHR2cTdNNDdIVVlvYWdadS9NeFg2dHhONjBoSCsyU0lUamdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzNjQ4MTQ4CWZpbGU6SkFSVklTIFVMVFJBXzAuMi45X3g2NC1zZXR1cC5leGUJdmVyc2lvbjowLjIuOQpwOU53STNMZ2VXVlJrOGJUZTk0dHFYN2JVM0lKdjNmNDJyeVJFVklEOEx3eFdWclZITEpVV2djL0syM29INFNPbGMzRTNkaXZPK1Y3Z0xmalArZHVDZz09Cg==",
+      "url": "https://jarvis-ultra-iota.vercel.app/updates/JARVIS-ULTRA_0.2.9_x64-setup.exe"
     }
   }
 }
