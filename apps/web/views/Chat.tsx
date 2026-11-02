@@ -1,6 +1,6 @@
 'use client';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Paperclip, ArrowUp, Square, Volume2, CheckCircle2, XCircle, Loader2, Trash2, Pin, PinOff, Copy, Check, RefreshCw, Pencil, Gauge, X, Code2, AudioLines, MonitorCog, FolderKanban, Zap } from 'lucide-react';
+import { Plus, Search, Paperclip, ArrowUp, Square, Volume2, CheckCircle2, XCircle, Loader2, Trash2, Pin, PinOff, Copy, Check, RefreshCw, Pencil, Gauge, X, Code2, AudioLines, MonitorCog, FolderKanban, Zap, ChevronDown } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
 import { useChat, type LiveMessage, type Stage } from '@/lib/chat';
 import { Markdown } from '@/components/Markdown';
@@ -71,7 +71,7 @@ export function ChatView() {
           {!chat.messages.length ? <Home /> : (
             <div ref={content} className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
               {chat.messages.map((m) => <Message key={m.id} m={m} canRegenerate={m.id === lastAssistantId && !chat.busy} />)}
-              {chat.busy && !chat.messages.some((m) => m.streaming && m.content) && <StageLine stage={chat.stage} />}
+              {chat.busy && !chat.messages.some((m) => m.streaming && (m.content || m.thinking)) && <StageLine stage={chat.stage} />}
               <div ref={endRef} />
             </div>
           )}
@@ -309,6 +309,7 @@ const Message = memo(function Message({ m, canRegenerate }: { m: LiveMessage; ca
           ))}
         </div>
       )}
+      {!!m.thinking && <Thinking text={m.thinking} live={!!m.streaming && !m.content} ms={m.thinkMs} />}
       {m.content && <Markdown text={m.content} streaming={m.streaming} />}
       {m.error && <div className="mt-1 rounded-xl border border-err/30 bg-err/[0.07] px-3 py-2 text-[13px] text-err">{m.error}</div>}
       {!m.streaming && (m.content || m.error) && (
@@ -347,4 +348,24 @@ function T({ label, v }: { label: string; v: string }) {
 }
 function IconBtn({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return <button aria-label={label} title={label} onClick={onClick} className="press grid place-items-center size-7 rounded-md hover:bg-white/[0.06] hover:text-fg">{children}</button>;
+}
+
+/** Raciocínio ao vivo, como no Claude: aberto enquanto pensa, recolhido ("Pensou por X s") depois. */
+function Thinking({ text, live, ms }: { text: string; live: boolean; ms?: number }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (live && box.current) box.current.scrollTop = box.current.scrollHeight; }, [text, live]);
+  const show = live || open;
+  return (
+    <div className="mb-2.5">
+      <button onClick={() => !live && setOpen((v) => !v)} className={cx('flex items-center gap-2 text-[12.5px]', live ? 'cursor-default' : 'text-dim hover:text-muted')}>
+        <span className={cx('studio-star', !live && 'opacity-60 [animation:none]')}>✻</span>
+        {live ? <span className="shimmer-text font-medium">Pensando…</span> : <span>Pensou por {ms != null ? `${Math.max(1, Math.round(ms / 1000))} s` : 'alguns segundos'}</span>}
+        {!live && <ChevronDown className={cx('size-3.5 transition-transform', open && 'rotate-180')} />}
+      </button>
+      {show && (
+        <div ref={box} className="enter mt-1.5 ml-1 pl-3 border-l-2 border-orange/25 max-h-40 overflow-y-auto scroll-thin text-[12.5px] leading-relaxed text-dim whitespace-pre-wrap">{text}</div>
+      )}
+    </div>
+  );
 }

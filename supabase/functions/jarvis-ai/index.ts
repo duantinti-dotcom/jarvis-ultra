@@ -29,6 +29,8 @@ Use Markdown quando ajudar (listas, tabelas, blocos de código); em conversa cas
 Você está rodando na nuvem (pelo site): aqui você conversa, explica, escreve, programa e planeja, mas NÃO tem acesso ao computador do usuário (arquivos, programas, tela). Se o pedido exigir o computador, diga que isso é feito pelo app JARVIS no PC (Desktop Control / Jarvis Code).
 Nunca invente fontes, links ou resultados de ações. Se não souber algo atual, diga que não tem acesso à internet em tempo real.`;
 
+const DESKTOP = `\n\nVocê está DENTRO do app JARVIS no PC do usuário: você CONSEGUE agir no computador. Quando ele der um comando direto (ex.: "abra o Chrome", "organize meus downloads", "tire um print", "liste os arquivos da pasta Documentos"), o app executa no PC com as permissões dele. Se ele perguntar se você consegue, diga que sim e dê exemplos de comandos.`;
+
 const VOICE = `\n\nMODO VOZ (ligação): sua resposta será FALADA em voz alta. Responda como numa conversa real ao telefone: 1 a 3 frases curtas, naturais e expressivas. Proibido: Markdown, listas, títulos, emojis, símbolos, links e código. Não diga "como IA". Se o assunto pedir detalhes, dê o essencial e pergunte se quer que continue.`;
 
 /** Provedor da requisição: chave pessoal do usuário (Configurações) > chave do projeto > gratuito. */
@@ -38,10 +40,15 @@ const PROVIDERS: Record<string, { base: string; models: AI['models'] }> = {
   openai: { base: 'https://api.openai.com/v1', models: { fast: 'gpt-4o-mini', balanced: 'gpt-4o', deep: 'gpt-4o' } },
   openrouter: { base: 'https://openrouter.ai/api/v1', models: { fast: 'openai/gpt-oss-20b', balanced: 'openai/gpt-oss-120b', deep: 'openai/gpt-oss-120b' } },
 };
-/** Modelos grátis da Groq em ordem de inteligência, com o limite de tokens por minuto de cada um. */
-// (conferido na conta: cada um tem cota própria de 8.000 tokens/min; revezar triplica a capacidade)
-const GROQ_CHAIN = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b', 'openai/gpt-oss-20b'];
-const GROQ_TPM: Record<string, number> = { 'openai/gpt-oss-120b': 8000, 'qwen/qwen3.8-27b': 8000, 'openai/gpt-oss-20b': 8000 };
+/** Todos os provedores grátis conectados pelo usuário (Configurações → Inteligência), em ordem de uso. */
+const BASES: Record<string, string> = {
+  groq: 'https://api.groq.com/openai/v1', cerebras: 'https://api.cerebras.ai/v1', gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  sambanova: 'https://api.sambanova.ai/v1', mistral: 'https://api.mistral.ai/v1', openrouter: 'https://openrouter.ai/api/v1', nvidia: 'https://integrate.api.nvidia.com/v1', openai: 'https://api.openai.com/v1',
+};
+const ORDER = ['groq', 'cerebras', 'gemini', 'sambanova', 'mistral', 'openrouter', 'nvidia', 'openai'];
+// cota por minuto quando o provedor não informa (só para dimensionar o pedido)
+const DEFAULT_TPM: Record<string, number> = { groq: 8000, cerebras: 60000, gemini: 250000, sambanova: 100000, mistral: 500000, openrouter: 100000, nvidia: 100000, openai: 200000 };
+type KeyRow = { api_key: string; provider: string; models: string[] | null; tpm: number | null };
 const PROJECT_AI: AI | null = KEY ? { key: KEY, base: BASE, provider: PROVIDER, models: { fast: MODES.fast.model, balanced: MODES.balanced.model, deep: MODES.deep.model } } : null;
 
 const POLL_KEY = env('POLLINATIONS_KEY');
@@ -112,6 +119,7 @@ FORMATO DA RESPOSTA (obrigatório)
 3. Uma linha final com o que testar.
 - Sempre o arquivo INTEIRO, nunca "...resto igual". Ao alterar um projeto existente, reenvie completos só os arquivos que mudaram e PRESERVE tudo o que já funcionava.
 - Para remover um arquivo: linha própria "DELETE: nome".
+- Seja eficiente para caber numa resposta: CSS até ~300 linhas e JS até ~250 linhas, sem comentários longos nem regras repetidas.
 - index.html referencia os outros arquivos por caminho relativo (<link rel="stylesheet" href="styles.css">, <script src="script.js" defer></script>). Sem build, sem frameworks que exijam compilação. CDNs estáveis são permitidos (Google Fonts, cdnjs, jsdelivr, unpkg).
 
 DESIGN (nível profissional)
@@ -164,7 +172,7 @@ Deno.serve(async (req) => {
   if (!u?.user) return json(401, { error: 'Sessão inválida. Entre novamente.' });
   const owner = u.user.id;
 
-  let body: { text?: string; conversationId?: string | null; mode?: string; code?: { files?: Record<string, string> }; voice?: boolean };
+  let body: { text?: string; conversationId?: string | null; mode?: string; code?: { files?: Record<string, string> }; voice?: boolean; desktop?: boolean };
   try { body = await req.json(); } catch { return json(400, { error: 'JSON inválido' }); }
   const text = String(body.text ?? '').trim().slice(0, 16000);
   if (!text) return json(400, { error: 'Mensagem vazia.' });
@@ -177,10 +185,12 @@ Deno.serve(async (req) => {
   const [usage, existing, userAi] = await Promise.all([
     admin.from('jarvis_ai_usage').select('id', { count: 'exact', head: true }).eq('owner', owner).gt('created_at', since),
     body.conversationId ? admin.from('jarvis_cloud_conversations').select('id').eq('id', body.conversationId).eq('owner', owner).maybeSingle() : Promise.resolve({ data: null }),
-    admin.from('jarvis_user_ai').select('api_key, provider').eq('owner', owner).maybeSingle(),
+    admin.from('jarvis_user_ai').select('api_key, provider, models, tpm').eq('owner', owner),
   ]);
-  const ua = userAi.data as { api_key: string; provider: string } | null;
-  const ai: AI | null = ua && PROVIDERS[ua.provider] ? { key: ua.api_key, base: PROVIDERS[ua.provider]!.base, provider: `${ua.provider} (sua chave)`, models: PROVIDERS[ua.provider]!.models } : PROJECT_AI;
+  const keys = ((userAi.data ?? []) as KeyRow[]).filter((k) => BASES[k.provider]).sort((a, b) => ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider));
+  const ua = keys[0] ?? null;
+  const modelsOf = (k: KeyRow) => (k.models?.length ? k.models : PROVIDERS[k.provider] ? [PROVIDERS[k.provider]!.models.balanced, PROVIDERS[k.provider]!.models.fast] : []);
+  const ai: AI | null = ua ? { key: ua.api_key, base: BASES[ua.provider]!, provider: `${ua.provider} (sua chave)`, models: { fast: modelsOf(ua).at(-1)!, balanced: modelsOf(ua)[0]!, deep: modelsOf(ua)[0]! } } : PROJECT_AI;
   if ((usage.count ?? 0) >= 120) return json(429, { error: 'Muitas mensagens em pouco tempo. Aguarde um minuto.' });
   void admin.from('jarvis_ai_usage').insert({ owner }).then(() => {});
   let conversationId = (existing.data as { id: string } | null)?.id ?? null;
@@ -233,46 +243,67 @@ Deno.serve(async (req) => {
   const codeFiles = body.code?.files && typeof body.code.files === 'object' ? Object.entries(body.code.files).slice(0, 20) : [];
   const codeCtx = body.code ? (codeFiles.length ? `\n\nArquivos atuais do projeto:\n${codeFiles.map(([n, c]) => `\`\`\`${n.split('.').pop()} ${n}\n${String(c).slice(0, 30000)}\n\`\`\``).join('\n\n')}` : '\n\n(Projeto vazio: crie do zero.)') : '';
   const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' });
-  const sys = body.code ? CODE_SYSTEM : SYSTEM + `\nAgora: ${now} (horário de Brasília).` + (body.voice ? VOICE : '') + (mode === 'deep' && !ai ? '\nPense passo a passo antes de responder e verifique seu raciocínio.' : '');
+  const sys = body.code ? CODE_SYSTEM : SYSTEM + `\nAgora: ${now} (horário de Brasília).` + (body.desktop ? DESKTOP : '') + (body.voice ? VOICE : '') + (mode === 'deep' && !ai ? '\nPense passo a passo antes de responder e verifique seu raciocínio.' : '');
   const messages = [{ role: 'system', content: sys }, ...(hist ?? []).reverse().map((m) => ({ role: m.role, content: (body.code ? stripCode(m.content) : m.content).slice(0, 8000) })), { role: 'user', content: text + codeCtx }];
   // ---------- escolha do modelo e envio, sem travar em limites ----------
   // A Groq grátis limita tokens por minuto POR MODELO (pergunta + resposta). Para não travar nunca:
   // ajusta o tamanho do pedido, reveza entre modelos (cada um tem sua cota), espera e tenta de novo
   // quando o limite é curto, e por último usa a IA pública gratuita.
   const wantTokens = body.code ? 16000 : body.voice ? 1200 : cfg.maxTokens;
-  const tok = () => Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 3.2) + 50;
-  // cabe na cota: tira o histórico mais antigo até sobrar espaço para uma boa resposta
-  const budget = ai?.base.includes('groq') ? 8000 - (body.code ? 3500 : 1500) : 60000;
-  while (tok() > budget && messages.length > 2) messages.splice(1, 1);
-  const promptTok = tok();
-  type Try = { ai: AI | null; model: string; maxTokens: number };
+  const tokOf = (ms: { content: string }[]) => Math.ceil(ms.reduce((n, m) => n + m.content.length, 0) / 3.2) + 50;
+  // Projeto grande que não cabe no provedor: manda só os arquivos que importam para o pedido.
+  const reducedCtx = () => {
+    if (!codeFiles.length) return codeCtx;
+    const low = text.toLowerCase();
+    const named = codeFiles.filter(([n]) => low.includes(n.toLowerCase()) || low.includes(n.split('.')[0]!.toLowerCase()));
+    const wantCss = /\b(cor|cores|estilo|design|visual|fonte|tema|layout|anima|bonit|espaç|margem|tamanho|responsiv|celular|escuro|claro)/i.test(text);
+    const wantJs = /\b(bot[aã]o|clique|clicar|fun[cç]|funcion|erro|bug|interat|carrinho|formul|valida|jogo|calcul|salvar|script)/i.test(text);
+    const pick = named.length ? named : codeFiles.filter(([n]) => n.endsWith('.html') && n === 'index.html' || (wantCss && n.endsWith('.css')) || (wantJs && /\.m?js$/.test(n)));
+    const rest = codeFiles.filter((f) => !pick.includes(f));
+    return `\n\nArquivos enviados (altere só o necessário):\n${pick.map(([n, c]) => `\`\`\`${n.split('.').pop()} ${n}\n${String(c).slice(0, 30000)}\n\`\`\``).join('\n\n')}` + (rest.length ? `\n\nOutros arquivos do projeto (NÃO enviados; continuam iguais, não os reenvie a menos que precise mudá-los): ${rest.map(([n, c]) => `${n} (${String(c).split('\n').length} linhas)`).join(', ')}` : '');
+  };
+  // Monta o pedido para caber na cota do modelo: corta histórico antigo e, se preciso, os arquivos.
+  const fit = (tpm: number) => {
+    const minOut = body.code ? 3500 : 1000;
+    let ms = messages.map((m) => ({ ...m }));
+    while (tokOf(ms) > tpm - minOut && ms.length > 2) ms.splice(1, 1);
+    if (body.code && tokOf(ms) > tpm - minOut) ms = [ms[0]!, { role: 'user', content: text + reducedCtx() }];
+    const room = tpm - tokOf(ms) - 250;
+    return room >= 700 ? { ms, maxTokens: Math.min(wantTokens, room) } : null;
+  };
+  type Try = { ai: AI | null; model: string; maxTokens: number; ms: { role: string; content: string }[] };
   const tries: Try[] = [];
-  if (ai && ai.base.includes('groq')) {
-    const primary = body.code || body.voice ? ai.models.balanced : ai.models[mode];
-    const chain = [primary, ...GROQ_CHAIN.filter((m) => m !== primary && (body.code || mode !== 'fast' || m !== ai.models.balanced))];
-    for (const m of chain) {
-      const room = (GROQ_TPM[m] ?? 6000) - promptTok - 250;
-      if (room >= 700) tries.push({ ai, model: m, maxTokens: Math.min(wantTokens, room) });
+  for (const k of keys) {
+    const list = modelsOf(k);
+    // modo Rápido: começa pelo modelo mais leve do provedor; Código/voz/Equilibrado: pelo mais inteligente
+    const ordered = !body.code && !body.voice && mode === 'fast' ? [...list].reverse() : list;
+    const kai: AI = { key: k.api_key, base: BASES[k.provider]!, provider: `${k.provider} (sua chave)`, models: { fast: list.at(-1)!, balanced: list[0]!, deep: list[0]! } };
+    for (const m of ordered) {
+      const f = fit(k.tpm ?? DEFAULT_TPM[k.provider] ?? 8000);
+      if (f) tries.push({ ai: kai, model: m, maxTokens: f.maxTokens, ms: f.ms });
     }
-  } else if (ai) {
-    tries.push({ ai, model: body.code || body.voice ? ai.models.balanced : ai.models[mode], maxTokens: wantTokens });
   }
-  tries.push({ ai: null, model: FREE_MODEL, maxTokens: wantTokens }); // reserva final: IA pública gratuita
+  if (!keys.length && PROJECT_AI) {
+    const f = fit(60000)!;
+    tries.push({ ai: PROJECT_AI, model: body.code || body.voice ? PROJECT_AI.models.balanced : PROJECT_AI.models[mode], maxTokens: f.maxTokens, ms: f.ms });
+  }
+  { const f = fit(60000)!; tries.push({ ai: null, model: FREE_MODEL, maxTokens: wantTokens, ms: f.ms }); } // reserva final: IA pública gratuita
 
   const tReq = Date.now();
   let up: Response | null = null;
   let used: Try = tries[0]!;
   const notes: string[] = [];
   for (const t of tries) {
-    const payload: Record<string, unknown> = { model: t.model, messages, stream: true, max_tokens: t.maxTokens };
+    const payload: Record<string, unknown> = { model: t.model, messages: t.ms, stream: true, max_tokens: t.maxTokens };
     if (t.ai) payload.temperature = body.voice ? 0.7 : mode === 'deep' ? 0.6 : 0.5;
-    if (t.ai && /gpt-oss/i.test(t.model)) payload.reasoning_effort = body.voice ? 'low' : cfg.effort;
-    if (t.ai && /qwen3/i.test(t.model)) payload.reasoning_format = 'hidden'; // sem <think> no texto
+    if (t.ai && /gpt-oss/i.test(t.model) && /groq|cerebras/.test(t.ai.base)) payload.reasoning_effort = body.voice ? 'low' : cfg.effort;
+    if (t.ai && /qwen3/i.test(t.model) && t.ai.base.includes('groq')) payload.reasoning_format = 'hidden'; // sem <think> no texto
     for (let attempt = 0; attempt < 2; attempt++) {
       const r = await fetch(t.ai ? `${t.ai.base}/chat/completions` : FREE_BASE, { method: 'POST', headers: { 'content-type': 'application/json', ...(t.ai ? { authorization: `Bearer ${t.ai.key}` } : {}) }, body: JSON.stringify(payload) }).catch((e) => new Response(String(e), { status: 599 }));
       if (r.ok && r.body) { up = r; used = t; break; }
       const detail = (await r.text()).slice(0, 300);
-      if (ua && t.ai && (r.status === 401 || r.status === 403) && !/rate|limit/i.test(detail)) return json(502, { error: 'Sua chave de IA foi recusada pelo provedor. Confira em Configurações → Inteligência.' });
+      // chave recusada num provedor: segue para os outros (avisa só se nenhum funcionar)
+      if (t.ai && (r.status === 401 || r.status === 403) && !/rate|limit/i.test(detail)) { notes.push(`${t.ai.provider}: chave recusada`); break; }
       // limite curto (por minuto): espera o tempo pedido e tenta de novo no mesmo modelo
       const wait = Number(r.headers.get('retry-after') ?? /try again in ([\d.]+)s/i.exec(detail)?.[1] ?? NaN);
       if (r.status === 429 && attempt === 0 && wait > 0 && wait <= 6) { await new Promise((res) => setTimeout(res, wait * 1000 + 150)); continue; }
@@ -310,7 +341,11 @@ Deno.serve(async (req) => {
             if (d === '[DONE]') continue;
             try {
               const j = JSON.parse(d);
-              const piece = j.choices?.[0]?.delta?.content ?? '';
+              const delta = j.choices?.[0]?.delta ?? {};
+              // raciocínio ao vivo (gpt-oss/qwen mandam separado da resposta): a tela mostra "Pensando…"
+              const th = delta.reasoning ?? delta.reasoning_content ?? '';
+              if (th && !body.voice) { ttft ??= Date.now() - tReq; send({ type: 'thinking', text: th }); }
+              const piece = delta.content ?? '';
               if (piece) {
                 if (gated) {
                   pre += piece;

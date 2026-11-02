@@ -1,7 +1,7 @@
 'use client';
 import { useSyncExternalStore } from 'react';
 import type { CoreEvent, JarvisApi } from './types';
-import { parseSegments, applySegments, continuePrompt, LOCAL_CODE_PROMPT } from './studio';
+import { parseSegments, applySegments, continuePrompt, finishPartial, LOCAL_CODE_PROMPT } from './studio';
 
 /**
  * Estado do Jarvis Code fora da tela: a geração continua rodando se você trocar de
@@ -122,6 +122,14 @@ export async function studioSend(api: JarvisApi, text: string, auto = 0, pidArg?
   }
   const cont = next as { name: string; partial: string } | null;
   if (cont && !cancelled && auto < MAX_CONT) return studioSend(api, continuePrompt(cont.name, cont.partial), auto + 1, pid);
+  // acabaram as tentativas (ou foi interrompido): aproveita o que veio dos arquivos cortados
+  const cur = state.projects.find((x) => x.id === pid);
+  if (cur?.partials && Object.keys(cur.partials).length) {
+    const files = { ...cur.files };
+    const saved: string[] = [];
+    for (const [n, c] of Object.entries(cur.partials)) { const f = finishPartial(n, c); if (f) { files[n] = f; saved.push(n); } }
+    updateProject(pid, (x) => ({ ...x, files, partials: {}, messages: x.messages.map((m, i) => (i === x.messages.length - 1 && saved.length ? { ...m, incomplete: [], error: undefined, content: m.content + `\n\n_Aproveitei o que veio de ${saved.join(', ')} e fechei o arquivo. Se faltar algo, peça "complete ${saved[0]}"._` } : m)) }));
+  }
   setStudio((s) => ({ ...s, busy: null }));
 }
 

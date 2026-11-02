@@ -1,6 +1,7 @@
 /** Eventos emitidos pelo core (SSE local e espelhados pelo relay). */
 export type CoreEvent =
   | { type: 'chat.delta'; conversationId: string; messageId: string; text: string }
+  | { type: 'chat.thinking'; conversationId: string; messageId: string; text: string }
   | { type: 'chat.done'; conversationId: string; messageId: string; metrics: GenerationMetrics }
   | { type: 'chat.error'; conversationId: string; messageId: string; error: string }
   | { type: 'tool.start'; conversationId: string | null; taskId: string | null; callId: string; tool: string; args: unknown }

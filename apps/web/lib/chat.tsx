@@ -9,7 +9,9 @@ import type { JarvisApi } from './types';
 
 export type ToolActivity = { callId: string; tool: string; args?: unknown; ok?: boolean; summary?: string; durationMs?: number; running: boolean };
 export type LiveMessage = ChatMessage & {
-  streaming?: boolean; tools?: ToolActivity[]; metrics?: GenerationMetrics | null; error?: string; images?: string[];
+  streaming?: boolean; tools?: ToolActivity[];
+  /** Raciocínio ao vivo do modelo (mostrado como "Pensando…"). */
+  thinking?: string; thinkStart?: number; thinkMs?: number; metrics?: GenerationMetrics | null; error?: string; images?: string[];
   /** Medido no navegador: envio → primeiro trecho de texto (inclui rede + core + modelo). */
   clientFirstMs?: number;
 };
@@ -80,11 +82,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
   const handler = (e: Parameters<Parameters<JarvisApi['subscribe']>[0]>[0]) => {
     switch (e.type) {
+      case 'chat.thinking':
+        if (e.conversationId !== convRef.current) return;
+        setMessages((ms) => ms.some((m) => m.id === e.messageId)
+          ? ms.map((m) => (m.id === e.messageId ? { ...m, thinking: (m.thinking ?? '') + e.text } : m))
+          : [...ms, { id: e.messageId, role: 'assistant', content: '', thinking: e.text, thinkStart: performance.now(), createdAt: new Date().toISOString(), streaming: true, tools: [], clientFirstMs: sentAt.current ? Math.round(performance.now() - sentAt.current) : undefined }]);
+        break;
       case 'chat.delta':
         if (e.conversationId !== convRef.current) return;
         setStage({ kind: 'writing' });
         setMessages((ms) => ms.some((m) => m.id === e.messageId)
-          ? ms.map((m) => (m.id === e.messageId ? { ...m, content: m.content + e.text } : m))
+          ? ms.map((m) => (m.id === e.messageId ? { ...m, content: m.content + e.text, thinkMs: m.thinkMs ?? (m.thinkStart ? Math.round(performance.now() - m.thinkStart) : undefined) } : m))
           : [...ms, { id: e.messageId, role: 'assistant', content: e.text, createdAt: new Date().toISOString(), streaming: true, tools: [], clientFirstMs: sentAt.current ? Math.round(performance.now() - sentAt.current) : undefined }]);
         break;
       case 'chat.done':

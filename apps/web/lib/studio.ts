@@ -53,6 +53,11 @@ export function parseSegments(src: string): Segment[] {
         // um 2º bloco da mesma linguagem sem nome é exemplo/trecho, não arquivo
         if (!seen.has(guess) && (lang !== 'html' || /<(!doctype|html|head|body)/i.test(body.slice(0, 6).join('\n')))) name = guess;
       }
+      // a IA às vezes escreve o nome do arquivo sozinho na 1ª linha do código
+      if (body.length && /^\s*(<!--\s*|\/\*\s*|\/\/\s*)?[\w./-]+\.(html?|css|m?js)\s*(-->|\*\/)?\s*$/i.test(body[0]!)) {
+        name ??= nameIn(body[0]);
+        body.shift();
+      }
       if (name) {
         if (prev !== undefined && nameIn(prev) === name && prev.trim().length < 80) text.splice(k, 1);
         flush();
@@ -98,6 +103,33 @@ export function applySegments(files: Record<string, string>, segs: Segment[], pa
   return { files: next, changes, incomplete: Object.keys(pend), partials: pend };
 }
 
+/**
+ * Último recurso quando a IA não consegue terminar um arquivo: aproveita o que veio.
+ * CSS/HTML funcionam parciais (fecha as chaves abertas); JS volta até o último trecho válido.
+ */
+export function finishPartial(name: string, content: string): string | null {
+  const ext = name.split('.').pop()?.toLowerCase();
+  if (ext === 'css') {
+    let c = content.replace(/[^}]*$/, (tail) => (/\{/.test(tail) ? tail.replace(/;?\s*[^;{}]*$/, ';') : ''));
+    const open = (c.match(/\{/g)?.length ?? 0) - (c.match(/\}/g)?.length ?? 0);
+    if (open > 0) c += '\n' + '}'.repeat(open);
+    return c + '\n';
+  }
+  if (ext === 'html' || ext === 'htm') return content + '\n';
+  if (ext === 'js' || ext === 'mjs') {
+    const lines = content.split('\n');
+    // a última linha foi cortada no meio: começa sem ela
+    for (let n = lines.length - 1; n > 0 && lines.length - n < 400; n--) {
+      let code = lines.slice(0, n).join('\n');
+      const open = (code.match(/\{/g)?.length ?? 0) - (code.match(/\}/g)?.length ?? 0);
+      if (open > 0) code += '\n' + '}'.repeat(open);
+      try { new Function(code); return code + '\n'; } catch { /* tenta com menos linhas */ }
+    }
+    return null;
+  }
+  return null;
+}
+
 /** Junta a continuação removendo a sobreposição (o modelo às vezes repete o final). */
 function joinCont(a: string, b: string) {
   const max = Math.min(400, a.length, b.length);
@@ -113,7 +145,8 @@ function joinCont(a: string, b: string) {
 /** Pedido automático para continuar um arquivo cortado. */
 export function continuePrompt(name: string, partial: string) {
   const lang = name.split('.').pop();
-  return `Sua resposta anterior foi cortada no meio do arquivo ${name}. Continue EXATAMENTE de onde parou, sem repetir o que já foi escrito. O trecho final já recebido foi:\n<<<\n${partial.slice(-400)}\n>>>\nResponda só com um bloco \`\`\`${lang} ${name}.continue contendo o restante do arquivo e, depois, os demais arquivos que ainda faltarem (completos).`;
+  const lines = partial.split('\n');
+  return `A resposta anterior foi cortada no meio do arquivo ${name} (já recebi ${lines.length} linhas). NÃO recomece o arquivo. Continue exatamente da linha seguinte a esta:\n<<<\n${lines.slice(-6).join('\n')}\n>>>\nResponda SOMENTE com um bloco \`\`\`${lang} ${name}.continue contendo o restante, de forma enxuta (feche o que estiver aberto e termine o arquivo), e depois os demais arquivos que ainda faltarem, completos e curtos.`;
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);

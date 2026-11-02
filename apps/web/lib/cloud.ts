@@ -8,7 +8,7 @@ import type { ChatMessage, ConversationSummary, ReasoningMode } from './types';
  */
 const controllers = new Map<string, AbortController>();
 
-export async function cloudChat(text: string, conversationId: string | null, mode: ReasoningMode | undefined, emit: (e: CoreEvent) => void, code?: { files: Record<string, string> }, voice?: boolean): Promise<{ conversationId: string; messageId: string }> {
+export async function cloudChat(text: string, conversationId: string | null, mode: ReasoningMode | undefined, emit: (e: CoreEvent) => void, code?: { files: Record<string, string> }, voice?: boolean, desktop?: boolean): Promise<{ conversationId: string; messageId: string }> {
   const { data } = await supabase().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error('Sessão expirada. Entre novamente.');
@@ -16,7 +16,7 @@ export async function cloudChat(text: string, conversationId: string | null, mod
   const res = await fetch(`${SUPABASE_URL}/functions/v1/jarvis-ai`, {
     method: 'POST', signal: ac.signal,
     headers: { authorization: `Bearer ${token}`, apikey: SUPABASE_ANON, 'content-type': 'application/json' },
-    body: JSON.stringify({ text, conversationId, mode, code, voice }),
+    body: JSON.stringify({ text, conversationId, mode, code, voice, desktop }),
   });
   if (!res.ok || !res.body) {
     const j = await res.json().catch(() => ({}));
@@ -53,6 +53,7 @@ export async function cloudChat(text: string, conversationId: string | null, mod
         const ev = await readEvent();
         if (!ev) break;
         if (ev.type === 'status') emit({ type: 'tool.start', conversationId: cid, taskId: null, callId: `${mid}-img`, tool: 'imagem', args: { etapa: String(ev.text) } });
+        if (ev.type === 'thinking') emit({ type: 'chat.thinking', conversationId: cid, messageId: mid, text: String(ev.text) });
         if (ev.type === 'delta') emit({ type: 'chat.delta', conversationId: cid, messageId: mid, text: String(ev.text) });
         if (ev.type === 'done') emit({ type: 'chat.done', conversationId: cid, messageId: mid, metrics: ev.metrics as never });
         if (ev.type === 'error') emit({ type: 'chat.error', conversationId: cid, messageId: mid, error: String(ev.error) });

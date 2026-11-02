@@ -11,7 +11,7 @@ import { DevicesView } from './Devices';
 import { LabView } from './Lab';
 import { AgentsView } from './Agents';
 import { MonitorView } from './Monitor';
-import { supabase } from '@/lib/remote';
+import { supabase, SUPABASE_URL, SUPABASE_ANON } from '@/lib/remote';
 import { cloudAiStatus } from '@/lib/cloud';
 
 const TABS = [
@@ -194,49 +194,87 @@ function Account() {
   );
 }
 
-/** Chave pessoal do provedor de IA: fica só no servidor (o navegador nunca lê de volta). */
+const AI_PROVIDERS = [
+  { id: 'groq', name: 'Groq', url: 'https://console.groq.com/keys', hint: 'gsk_…', what: 'GPT-OSS 120B e Qwen3 — o mais rápido', how: 'Entre com Google → Create API Key' },
+  { id: 'gemini', name: 'Google Gemini', url: 'https://aistudio.google.com/apikey', hint: 'AIza…', what: 'Gemini Flash/Pro — cota grátis enorme', how: 'Entre com Google → Create API key' },
+  { id: 'cerebras', name: 'Cerebras', url: 'https://cloud.cerebras.ai/', hint: 'csk-…', what: 'GPT-OSS 120B e Qwen3 — muito rápido', how: 'Crie a conta → API Keys' },
+  { id: 'openrouter', name: 'OpenRouter', url: 'https://openrouter.ai/keys', hint: 'sk-or-…', what: 'Modelos :free (DeepSeek, Qwen Coder…)', how: 'Entre → Keys → Create Key' },
+  { id: 'mistral', name: 'Mistral', url: 'https://console.mistral.ai/api-keys', hint: '…', what: 'Mistral Large e Codestral (código)', how: 'Plano Experiment (grátis) → API Keys' },
+  { id: 'sambanova', name: 'SambaNova', url: 'https://cloud.sambanova.ai/apis', hint: '…', what: 'DeepSeek V3 e Llama', how: 'Entre → API Keys' },
+  { id: 'nvidia', name: 'NVIDIA', url: 'https://build.nvidia.com/', hint: 'nvapi-…', what: 'DeepSeek, Qwen Coder, Kimi', how: 'Entre → Get API Key' },
+] as const;
+
+/** Várias chaves grátis somadas: o Jarvis reveza entre todas (a mais inteligente primeiro). */
 function Brain() {
   const { notify } = useJarvis();
   const st = useAsync(async () => {
     const { data, error } = await supabase().rpc('jarvis_ai_key_status');
     if (error) throw new Error(error.message);
-    return data as { configured: boolean; provider?: string; hint?: string; updated_at?: string };
+    return data as { configured: boolean; keys: { provider: string; hint: string; models: string[]; status: string | null }[] };
   }, []);
-  const [key, setKey] = useState('');
-  const [provider, setProvider] = useState('groq');
-  const [busy, setBusy] = useState(false);
-  const save = async (k: string) => {
-    setBusy(true);
-    try {
-      const { error } = await supabase().rpc('jarvis_set_ai_key', { p_key: k, p_provider: provider });
-      if (error) throw new Error(error.message);
-      setKey('');
-      void cloudAiStatus(true);
-      notify('ok', k ? 'Chave salva. As próximas respostas já usam o modelo mais inteligente.' : 'Chave removida.');
-      await st.reload();
-    } catch (e) { notify('err', (e as Error).message); } finally { setBusy(false); }
+  const [keys, setKeys] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const call = async (provider: string, body: Record<string, unknown>) => {
+    const { data } = await supabase().auth.getSession();
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/jarvis-ai-keys`, { method: 'POST', headers: { authorization: `Bearer ${data.session?.access_token ?? ''}`, apikey: SUPABASE_ANON, 'content-type': 'application/json' }, body: JSON.stringify({ provider, ...body }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+    return j as { models?: string[] };
   };
+  const save = async (provider: string) => {
+    setBusy(provider);
+    try {
+      const j = await call(provider, { key: (keys[provider] ?? '').trim() });
+      setKeys((k) => ({ ...k, [provider]: '' }));
+      void cloudAiStatus(true);
+      notify('ok', `Conectado! Modelos: ${(j.models ?? []).slice(0, 3).join(', ')}`);
+      await st.reload();
+    } catch (e) { notify('err', (e as Error).message); } finally { setBusy(null); }
+  };
+  const remove = async (provider: string) => {
+    if (!confirm('Remover esta chave?')) return;
+    setBusy(provider);
+    try { await call(provider, { action: 'remove' }); void cloudAiStatus(true); await st.reload(); } catch (e) { notify('err', (e as Error).message); } finally { setBusy(null); }
+  };
+  const on = new Map((st.data?.keys ?? []).map((k) => [k.provider, k]));
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-3xl">
       <Panel title="Inteligência na nuvem" icon={<Sparkles className="size-4 text-orange-glow" />}>
-        <p className="text-[13px] text-muted">Sem chave, o Jarvis usa um modelo gratuito público (mais simples e mais lento, e corta respostas longas). Com uma chave gratuita da <b>Groq</b>, ele passa a usar o GPT-OSS 120B: muito mais inteligente, responde em menos de 1 segundo e cria sites inteiros sem cortar.</p>
+        <p className="text-[13px] text-muted">Cada IA grátis tem uma cota por minuto/dia. <b className="text-fg">Conecte quantas quiser</b>: o Jarvis soma todas e reveza sozinho — quando uma enche, usa a próxima, sem você perceber. Quanto mais chaves, mais perto de ilimitado. As chaves ficam só no servidor.</p>
         <div className="mt-3 flex items-center gap-2 text-[13px]">
-          <span className={cx('size-2 rounded-full', st.data?.configured ? 'bg-ok' : 'bg-amber')} />
-          {st.loading ? 'Verificando…' : st.data?.configured ? <>Usando sua chave {st.data.provider} (…{st.data.hint})</> : 'Usando o modelo gratuito'}
+          <span className={cx('size-2 rounded-full', on.size ? 'bg-ok' : 'bg-amber')} />
+          {st.loading ? 'Verificando…' : on.size ? `${on.size} IA(s) conectada(s)` : 'Nenhuma chave: usando a IA pública gratuita (lenta)'}
         </div>
-        <ol className="mt-4 space-y-1.5 text-[12.5px] text-muted list-decimal pl-5">
-          <li>Abra <a className="text-orange-soft hover:underline inline-flex items-center gap-1" href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys<ExternalLink className="size-3" /></a> e entre com sua conta Google (é grátis).</li>
-          <li>Clique em <b>Create API Key</b>, dê um nome (ex.: Jarvis) e copie a chave (começa com <code>gsk_</code>).</li>
-          <li>Cole aqui embaixo e salve.</li>
-        </ol>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Select value={provider} onChange={setProvider} options={[{ value: 'groq', label: 'Groq (grátis, recomendado)' }, { value: 'openrouter', label: 'OpenRouter' }, { value: 'openai', label: 'OpenAI' }]} />
-          <Input type="password" autoComplete="off" placeholder="gsk_..." value={key} onChange={(e) => setKey(e.target.value)} className="flex-1 min-w-[220px]" aria-label="Chave da API" />
-          <Button variant="primary" icon={<KeyRound className="size-3.5" />} disabled={key.trim().length < 20} loading={busy} onClick={() => save(key.trim())}>Salvar chave</Button>
-          {st.data?.configured && <Button variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={() => confirm('Remover sua chave? O Jarvis volta ao modelo gratuito.') && save('')}>Remover</Button>}
-        </div>
-        <p className="mt-3 text-[11.5px] text-dim">A chave é guardada no servidor do Jarvis com acesso bloqueado: nem este site consegue lê-la de volta. Só a função de IA a usa para responder você.</p>
       </Panel>
+      <div className="grid gap-3">
+        {AI_PROVIDERS.map((p) => {
+          const k = on.get(p.id);
+          return (
+            <div key={p.id} className={cx('surface rounded-xl p-4 lift', k && 'border-ok/30')}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={cx('size-2 rounded-full', k ? 'bg-ok' : 'bg-white/20')} />
+                <span className="text-[14px] font-medium">{p.name}</span>
+                <span className="text-[12px] text-dim">· {p.what}</span>
+                <a href={p.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[12px] text-orange-soft hover:underline inline-flex items-center gap-1">Pegar chave grátis<ExternalLink className="size-3" /></a>
+              </div>
+              {k ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
+                  <Check className="size-3.5 text-ok" />Conectado (…{k.hint}) · {k.models?.slice(0, 3).join(', ')}
+                  <button onClick={() => void remove(p.id)} disabled={busy === p.id} className="ml-auto text-dim hover:text-err inline-flex items-center gap-1"><Trash2 className="size-3.5" />Remover</button>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-1 text-[11.5px] text-dim">{p.how}</div>
+                  <div className="mt-2.5 flex gap-2">
+                    <Input type="password" autoComplete="off" placeholder={p.hint} value={keys[p.id] ?? ''} onChange={(e) => setKeys((x) => ({ ...x, [p.id]: e.target.value }))} className="flex-1" aria-label={`Chave ${p.name}`} />
+                    <Button variant="primary" icon={<KeyRound className="size-3.5" />} disabled={(keys[p.id] ?? '').trim().length < 20} loading={busy === p.id} onClick={() => void save(p.id)}>Conectar</Button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
