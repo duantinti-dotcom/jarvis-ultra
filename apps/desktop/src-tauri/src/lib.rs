@@ -154,6 +154,56 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Atualização automática: confere o GitHub Releases ao abrir e a cada 30 min. Se houver
+/// versão nova (assinada com a nossa chave), pergunta e instala sozinho, reabrindo o app.
+fn watch_updates(app: AppHandle) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_updater::UpdaterExt;
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(25));
+        let mut declined: Option<String> = None;
+        loop {
+            let found = tauri::async_runtime::block_on(async {
+                let updater = app.updater().ok()?;
+                updater.check().await.ok().flatten()
+            });
+            if let Some(update) = found {
+                if declined.as_deref() != Some(update.version.as_str()) {
+                    let notes = update.body.clone().unwrap_or_default();
+                    let msg = format!(
+                        "Nova atualização do JARVIS ULTRA: versão {} (você tem a {}).\n\n{}\n\nAtualizar agora? Leva menos de 1 minuto e o JARVIS reabre sozinho.",
+                        update.version, update.current_version, notes.chars().take(600).collect::<String>()
+                    );
+                    let yes = app.dialog().message(msg).title("Nova atualização disponível").kind(MessageDialogKind::Info)
+                        .buttons(MessageDialogButtons::OkCancelCustom("Atualizar agora".into(), "Depois".into()))
+                        .blocking_show();
+                    if yes {
+                        splash(&app, "Baixando a atualização…", false);
+                        let ok = tauri::async_runtime::block_on(async { update.download(|_, _| {}, || {}).await });
+                        match ok {
+                            Ok(bytes) => {
+                                // o instalador precisa substituir o node.exe: encerra o core antes
+                                stop_core(&app);
+                                if let Err(e) = update.install(bytes) {
+                                    app.dialog().message(format!("Não consegui instalar a atualização: {e}")).kind(MessageDialogKind::Error).blocking_show();
+                                } else {
+                                    app.restart();
+                                }
+                            }
+                            Err(e) => {
+                                app.dialog().message(format!("Não consegui baixar a atualização: {e}")).kind(MessageDialogKind::Error).blocking_show();
+                            }
+                        }
+                    } else {
+                        declined = Some(update.version.clone());
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_secs(30 * 60));
+        }
+    });
+}
+
 fn stop_core(app: &AppHandle) {
     if let Some(mut c) = app.state::<CoreProcess>().child.lock().unwrap().take() {
         let _ = c.kill();
@@ -165,6 +215,8 @@ fn stop_core(app: &AppHandle) {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(CoreProcess { child: Mutex::new(None), ready: Mutex::new(None) })
         .setup(|app| {
             let handle = app.handle().clone();
@@ -195,7 +247,8 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            start_core(handle);
+            start_core(handle.clone());
+            watch_updates(handle);
             Ok(())
         })
         .on_window_event(|window, event| {

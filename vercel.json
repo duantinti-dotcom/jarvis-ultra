@@ -1,6 +1,6 @@
 {
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm --filter @jarvis/web build",
+  "buildCommand": "pnpm --filter @jarvis/web build && mkdir -p apps/web/out/updates && cp -r updates/. apps/web/out/updates/",
   "outputDirectory": "apps/web/out",
   "framework": null
 }

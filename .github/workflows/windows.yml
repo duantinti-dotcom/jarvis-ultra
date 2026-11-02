@@ -6,6 +6,9 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -36,15 +39,34 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      - name: Build Tauri (NSIS)
+      - name: Build Tauri (NSIS, assinado para atualização automática quando a chave existe)
         working-directory: apps/desktop
-        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis
+          else
+            echo "::warning::Sem TAURI_SIGNING_PRIVATE_KEY: instalador gerado sem pacote de atualização automática."
+            pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: JARVIS-ULTRA-windows
-          path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-      - name: Publicar release (tags v*)
+          path: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
+      - name: Publicar atualização automática (tags v*)
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+        shell: bash
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          [ "$HAS_KEY" = "true" ] || { echo "::error::Configure o segredo TAURI_SIGNING_PRIVATE_KEY para publicar atualizações."; exit 1; }
+          V="${GITHUB_REF_NAME#v}"
+          EXE=$(ls apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*_${V}_x64-setup.exe)
+          git fetch origin main && git checkout main
+          node scripts/publish-update.mjs --version "$V" --exe "$EXE" --sig "$EXE.sig" --notes "$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" | head -c 600)"
+          git config user.name "JARVIS release bot"
+          git config user.email "actions@github.com"
+          git add updates && git commit -m "Atualização automática: versão $V" && git push origin main
