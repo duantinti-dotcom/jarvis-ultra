@@ -1,1 +1,1 @@
-{ "name": "JARVIS ULTRA", "short_name": "JARVIS", "start_url": "/", "display": "standalone", "background_color": "#06080c", "theme_color": "#06080c", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+{ "name": "Lume IA", "short_name": "Lume", "start_url": "/", "display": "standalone", "background_color": "#050606", "theme_color": "#050606", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }

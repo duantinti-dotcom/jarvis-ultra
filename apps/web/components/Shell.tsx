@@ -1,15 +1,15 @@
 'use client';
 import { useEffect, useState, type ComponentType } from 'react';
 import dynamic from 'next/dynamic';
-import { MessageSquare, Code2, AudioLines, MonitorCog, FolderKanban, History, ShieldCheck, Settings, OctagonX, Wifi, WifiOff, Camera, Check, X, Menu, Globe, Search, Loader2 } from 'lucide-react';
+import { MessageSquare, Code2, AudioLines, MonitorCog, FolderKanban, History, ShieldCheck, Settings, OctagonX, Wifi, WifiOff, Camera, Check, X, Menu, Globe, Search, Loader2, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useJarvis } from '@/lib/store';
 import { ChatProvider } from '@/lib/chat';
 import type { Device } from '@/lib/types';
-import { Badge, Button, cx } from './ui';
+import { Badge, Button, cx, LumeMark } from './ui';
 import { CommandPalette } from './CommandPalette';
 import { Onboarding } from './Onboarding';
 
-const loading = () => <div className="h-full grid place-items-center"><Loader2 className="size-5 animate-spin text-orange" /></div>;
+const loading = () => <div className="h-full grid place-items-center"><Loader2 className="size-5 animate-spin text-accent" /></div>;
 const ChatView = dynamic(() => import('@/views/Chat').then((m) => m.ChatView), { loading });
 const CodeView = dynamic(() => import('@/views/CodeHub').then((m) => m.CodeHub), { loading, ssr: false });
 const VoiceView = dynamic(() => import('@/views/Voice').then((m) => m.VoiceView), { loading, ssr: false });
@@ -21,12 +21,12 @@ const SettingsView = dynamic(() => import('@/views/Settings').then((m) => m.Sett
 
 type ViewDef = { id: string; label: string; hint: string; icon: ComponentType<{ className?: string }>; C: ComponentType; localOnly?: boolean; group: 'main' | 'system' };
 export const VIEWS: ViewDef[] = [
-  { id: 'chat', label: 'Jarvis Chat', hint: 'Converse, pergunte e peça tarefas', icon: MessageSquare, C: ChatView, group: 'main' },
-  { id: 'code', label: 'Jarvis Code', hint: 'Crie sites completos com preview ao vivo', icon: Code2, C: CodeView, group: 'main' },
-  { id: 'voice', label: 'Jarvis Voice', hint: 'Converse por voz', icon: AudioLines, C: VoiceView, group: 'main' },
+  { id: 'chat', label: 'Chat', hint: 'Converse, pergunte, crie imagens e peça tarefas', icon: MessageSquare, C: ChatView, group: 'main' },
+  { id: 'code', label: 'Code', hint: 'Crie e edite sites e apps com preview ao vivo', icon: Code2, C: CodeView, group: 'main' },
+  { id: 'voice', label: 'Voz', hint: 'Converse falando, como numa ligação', icon: AudioLines, C: VoiceView, group: 'main' },
   { id: 'desktop', label: 'Desktop Control', hint: 'Tarefas reais no Windows', icon: MonitorCog, C: DesktopView, localOnly: true, group: 'main' },
   { id: 'files', label: 'Arquivos e projetos', hint: 'Pastas liberadas e projetos', icon: FolderKanban, C: FilesView, localOnly: true, group: 'main' },
-  { id: 'history', label: 'Histórico', hint: 'Conversas e tarefas', icon: History, C: HistoryView, group: 'system' },
+  { id: 'history', label: 'Histórico', hint: 'Conversas e projetos anteriores', icon: History, C: HistoryView, group: 'system' },
   { id: 'security', label: 'Security Center', hint: 'Permissões e privacidade', icon: ShieldCheck, C: SecurityView, group: 'system' },
   { id: 'settings', label: 'Configurações', hint: 'Modelos, voz, dispositivos', icon: Settings, C: SettingsView, group: 'system' },
 ];
@@ -46,6 +46,28 @@ function ShellInner({ device }: { device?: Device }) {
   const [view, setView] = useState('chat');
   const [mobileNav, setMobileNav] = useState(false);
   const [palette, setPalette] = useState(false);
+  // Sidebar: recolhível e redimensionável (preferência salva neste navegador)
+  const [collapsed, setCollapsed] = useState(false);
+  const [width, setWidth] = useState(244);
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem('lume.sidebar.collapsed') === '1');
+      const w = Number(localStorage.getItem('lume.sidebar.width'));
+      if (w >= 200 && w <= 340) setWidth(w);
+    } catch {}
+  }, []);
+  const toggleCollapsed = () => setCollapsed((c) => { try { localStorage.setItem('lume.sidebar.collapsed', c ? '0' : '1'); } catch {} return !c; });
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    setDragging(true);
+    const x0 = e.clientX, w0 = width;
+    let w = w0;
+    const move = (ev: PointerEvent) => { w = Math.max(200, Math.min(340, w0 + ev.clientX - x0)); setWidth(w); };
+    const up = () => { setDragging(false); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); try { localStorage.setItem('lume.sidebar.width', String(w)); } catch {} };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   useEffect(() => {
     const on = () => { setView(readHash()); setMobileNav(false); };
     on();
@@ -71,23 +93,24 @@ function ShellInner({ device }: { device?: Device }) {
   const running = Object.values(tasks).filter((t) => !['completed', 'failed', 'cancelled'].includes(t.state));
   const immersive = view === 'voice';
 
-  const nav = (
+  const nav = (mini: boolean) => (
     <nav className="flex flex-col gap-0.5" aria-label="Navegação principal">
       {(['main', 'system'] as const).map((g) => (
         <div key={g} className={cx(g === 'system' && 'mt-4 pt-4 border-t border-line')}>
-          {VIEWS.filter((v) => v.group === g).map((v) => {
+          {!mini && <div className="label-tech px-2.5 mb-1.5">{g === 'main' ? 'Ferramentas' : 'Conta e sistema'}</div>}
+          {VIEWS.filter((v) => v.group === g && !(remote && v.localOnly)).map((v) => {
             const Icon = v.icon;
             const i = VIEWS.indexOf(v);
             const disabled = remote && v.localOnly;
             const active = view === v.id;
             return (
-              <a key={v.id} href={`#/${v.id}`} aria-current={active ? 'page' : undefined} title={disabled ? 'Disponível no app do computador' : `${v.hint} (Alt+${i + 1})`}
-                className={cx('press group relative flex items-center gap-3 rounded-lg px-2.5 h-9 text-[13px]', active ? 'bg-white/[0.06] text-fg' : 'text-muted hover:text-fg hover:bg-white/[0.035]', disabled && 'opacity-40')}>
-                {active && <span className="absolute -left-3 top-2 bottom-2 w-[3px] rounded-r-full bg-gradient-to-b from-orange-glow to-amber" />}
-                <Icon className={cx('size-[16px] shrink-0', active ? 'text-orange-glow' : 'text-dim group-hover:text-muted')} />
-                <span className="truncate">{v.label}</span>
-                {v.id === 'desktop' && running.length > 0 && <span className="ml-auto size-1.5 rounded-full bg-orange animate-pulse-soft" aria-label="tarefa em execução" />}
-                {v.id === 'security' && approvals.length > 0 && <span className="ml-auto rounded-full bg-amber text-black text-[10px] font-bold px-1.5">{approvals.length}</span>}
+              <a key={v.id} href={`#/${v.id}`} aria-current={active ? 'page' : undefined} aria-label={v.label} title={mini ? `${v.label} — ${v.hint}` : disabled ? 'Disponível no app do computador' : `${v.hint} (Alt+${i + 1})`}
+                className={cx('press group relative flex items-center gap-3 rounded-lg h-9 text-[13px] transition-colors', mini ? 'justify-center px-0' : 'px-2.5', active ? 'bg-accent/[0.09] text-fg' : 'text-muted hover:text-fg hover:bg-white/[0.04]', disabled && 'opacity-40')}>
+                {active && <span className="absolute left-0 top-2 bottom-2 w-[2px] rounded-r-full bg-accent" />}
+                <Icon className={cx('size-[17px] shrink-0 transition-colors', active ? 'text-accent-glow' : 'text-dim group-hover:text-muted')} />
+                {!mini && <span className="truncate">{v.label}</span>}
+                {!mini && v.id === 'desktop' && running.length > 0 && <span className="ml-auto size-1.5 rounded-full bg-accent animate-pulse-soft" aria-label="tarefa em execução" />}
+                {!mini && v.id === 'security' && approvals.length > 0 && <span className="ml-auto rounded-full bg-warn text-black text-[10px] font-bold px-1.5">{approvals.length}</span>}
               </a>
             );
           })}
@@ -96,26 +119,34 @@ function ShellInner({ device }: { device?: Device }) {
     </nav>
   );
 
-  const sidebar = (
+  const sidebar = (mini: boolean) => (
     <>
-      <Brand />
-      <button onClick={() => setPalette(true)} className="press mt-5 flex items-center gap-2 rounded-lg border border-line bg-white/[0.02] px-2.5 h-9 text-[12.5px] text-dim hover:text-muted hover:border-line-strong">
-        <Search className="size-3.5 shrink-0" /><span className="whitespace-nowrap">Buscar e comandos</span><kbd className="ml-auto whitespace-nowrap font-mono text-[10px] rounded border border-line px-1">Ctrl K</kbd>
+      <div className={cx('flex items-center', mini ? 'justify-center' : 'justify-between')}>
+        <Brand mini={mini} />
+        {!mini && <button onClick={toggleCollapsed} aria-label="Recolher menu" title="Recolher menu" className="press hidden lg:grid place-items-center size-7 rounded-md text-dim hover:text-fg hover:bg-white/[0.05]"><PanelLeftClose className="size-4" /></button>}
+      </div>
+      {mini && <button onClick={toggleCollapsed} aria-label="Expandir menu" title="Expandir menu" className="press mt-3 mx-auto grid place-items-center size-8 rounded-md text-dim hover:text-fg hover:bg-white/[0.05]"><PanelLeftOpen className="size-4" /></button>}
+      <button onClick={() => setPalette(true)} title="Buscar e comandos (Ctrl K)" className={cx('press mt-4 flex items-center gap-2 rounded-lg border border-line bg-white/[0.02] h-9 text-[12.5px] text-dim hover:text-muted hover:border-line-strong', mini ? 'justify-center px-0' : 'px-2.5')}>
+        <Search className="size-3.5 shrink-0" />{!mini && <><span className="whitespace-nowrap">Buscar e comandos</span><kbd className="ml-auto whitespace-nowrap font-mono text-[10px] rounded border border-line px-1">Ctrl K</kbd></>}
       </button>
-      <div className="mt-4 flex-1 overflow-y-auto scroll-thin pl-3 -ml-3">{nav}</div>
+      <a href="#/code" className={cx('press mt-2 flex items-center gap-2 rounded-lg h-9 text-[12.5px] font-medium btn-accent', mini ? 'justify-center px-0' : 'px-2.5')} title="Novo projeto no Code"><Plus className="size-4 shrink-0" />{!mini && 'Novo projeto'}</a>
+      <div className="mt-5 flex-1 overflow-y-auto overflow-x-hidden scroll-thin">{nav(mini)}</div>
       <div className="mt-3 space-y-2">
-        <ConnectionPill remote={remote} online={online} pcOnline={!!status?.online} device={device} relay={status?.relay} />
-        <EmergencyButton />
+        {!mini && <ConnectionPill remote={remote} online={online} pcOnline={!!status?.online} device={device} relay={status?.relay} />}
+        {!remote && !mini && <EmergencyButton />}
       </div>
     </>
   );
 
   return (
-    <div className="h-dvh flex">
-      <aside className="hidden lg:flex w-[236px] shrink-0 flex-col border-r border-line bg-black/25 px-3 py-4">{sidebar}</aside>
+    <div className={cx('h-dvh flex', dragging && 'select-none cursor-col-resize')}>
+      <aside style={{ width: collapsed ? 64 : width }} className={cx('relative hidden lg:flex shrink-0 flex-col border-r border-line bg-black/40 py-4', collapsed ? 'px-2' : 'px-3', !dragging && 'sidebar-anim')}>
+        {sidebar(collapsed)}
+        {!collapsed && <div role="separator" aria-orientation="vertical" aria-label="Redimensionar menu" onPointerDown={startResize} onDoubleClick={() => { setWidth(244); try { localStorage.setItem('lume.sidebar.width', '244'); } catch {} }} className={cx('resizer absolute -right-1 top-0 bottom-0 w-2 z-10', dragging && 'active')} />}
+      </aside>
       {mobileNav && (
         <div className="lg:hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-sm" onClick={() => setMobileNav(false)}>
-          <aside className="absolute left-0 top-0 bottom-0 w-[268px] bg-surface border-r border-line px-3 py-4 flex flex-col animate-fade-up" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
+          <aside className="absolute left-0 top-0 bottom-0 w-[272px] bg-surface border-r border-line px-3 py-4 flex flex-col animate-fade-up" onClick={(e) => e.stopPropagation()}>{sidebar(false)}</aside>
         </div>
       )}
 
@@ -150,12 +181,12 @@ function ShellInner({ device }: { device?: Device }) {
       {approvals.length > 0 && (
         <div className="fixed right-3 bottom-3 sm:right-5 sm:bottom-5 z-30 w-[min(380px,calc(100vw-24px))] space-y-2">
           {approvals.slice(0, 3).map((a) => (
-            <div key={a.id} className="surface-raised rounded-2xl p-3.5 !border-amber/30 animate-fade-up" role="alertdialog" aria-label={`Aprovar ${a.tool}`}>
+            <div key={a.id} className="surface-raised rounded-2xl p-3.5 !border-warn/30 animate-fade-up" role="alertdialog" aria-label={`Aprovar ${a.tool}`}>
               <div className="flex items-center gap-2">
                 <Badge tone={a.risk === 'high' || a.risk === 'critical' ? 'err' : 'warn'}>confirmação · risco {a.risk}</Badge>
                 <span className="ml-auto label-tech">{a.origin === 'remote' ? 'pelo celular' : 'neste PC'}</span>
               </div>
-              <p className="mt-2 text-[13px]"><span className="font-mono text-orange-soft">{a.tool}</span></p>
+              <p className="mt-2 text-[13px]"><span className="font-mono text-accent-soft">{a.tool}</span></p>
               <p className="text-[12px] text-muted line-clamp-2">{a.reason}</p>
               <pre className="mt-2 max-h-24 overflow-auto scroll-thin rounded-lg bg-black/40 p-2 text-[11px] font-mono text-fg/80 whitespace-pre-wrap break-all">{JSON.stringify(a.args, null, 1)}</pre>
               <div className="mt-2.5 flex gap-2">
@@ -168,7 +199,7 @@ function ShellInner({ device }: { device?: Device }) {
       )}
       <div className="fixed left-1/2 -translate-x-1/2 bottom-5 z-50 space-y-2 w-[min(440px,calc(100vw-24px))] pointer-events-none" aria-live="polite">
         {notices.map((n) => (
-          <div key={n.id} className={cx('surface-raised rounded-xl px-3.5 py-2.5 text-[13px] animate-fade-up', n.tone === 'err' && '!border-err/40 text-err', n.tone === 'ok' && '!border-ok/40 text-ok', n.tone === 'warn' && '!border-amber/40 text-amber')}>{n.text}</div>
+          <div key={n.id} className={cx('surface-raised rounded-xl px-3.5 py-2.5 text-[13px] animate-fade-up', n.tone === 'err' && '!border-err/40 text-err', n.tone === 'ok' && '!border-ok/40 text-ok', n.tone === 'warn' && '!border-warn/40 text-warn')}>{n.text}</div>
         ))}
       </div>
       {palette && <CommandPalette onClose={() => setPalette(false)} />}
@@ -177,16 +208,16 @@ function ShellInner({ device }: { device?: Device }) {
   );
 }
 
-function Brand() {
+function Brand({ mini }: { mini?: boolean }) {
   return (
-    <a href="#/chat" className="flex items-center gap-2.5 px-1">
-      <span className="relative grid place-items-center size-8 rounded-[10px] bg-gradient-to-br from-[#2a1a0e] to-[#0f0d0b] border border-orange/25">
-        <svg viewBox="0 0 64 64" className="size-6" aria-hidden><circle cx="32" cy="32" r="22" fill="none" stroke="#ff8a2b" strokeWidth="3" strokeDasharray="28 8" /><circle cx="32" cy="32" r="9" fill="#ffb35c" /></svg>
-      </span>
-      <div>
-        <div className="font-display font-semibold tracking-[0.2em] text-[14px] leading-none">JARVIS</div>
-        <div className="font-mono text-[9px] tracking-[0.18em] mt-1 text-orange-soft/80">ULTRA · 0.2</div>
-      </div>
+    <a href="#/chat" className="flex items-center gap-2.5 px-1" aria-label="Lume IA — início">
+      <LumeMark />
+      {!mini && (
+        <div className="leading-none">
+          <div className="font-display font-semibold text-[16px] tracking-tight">Lume<span className="text-accent-glow"> IA</span></div>
+          <div className="mt-1 text-[10.5px] text-dim">Plataforma de IA</div>
+        </div>
+      )}
     </a>
   );
 }
@@ -196,7 +227,7 @@ function ConnectionPill({ remote, online, pcOnline, relay }: { remote: boolean; 
     <div className="flex items-center gap-2 rounded-lg px-2.5 h-8 text-[11.5px] text-muted bg-white/[0.025]">
       {online ? <Wifi className="size-3.5 text-ok" /> : <WifiOff className="size-3.5 text-err" />}
       <span className="truncate">{remote ? `Nuvem · PC ${pcOnline ? 'online' : 'offline'}` : `Núcleo local · ${online ? 'conectado' : 'offline'}`}</span>
-      {!remote && relay?.enabled && <Globe className={cx('ml-auto size-3.5', relay.connected ? 'text-orange' : 'text-dim')} aria-label={relay.connected ? 'acesso remoto conectado' : 'acesso remoto desconectado'} />}
+      {!remote && relay?.enabled && <Globe className={cx('ml-auto size-3.5', relay.connected ? 'text-accent' : 'text-dim')} aria-label={relay.connected ? 'acesso remoto conectado' : 'acesso remoto desconectado'} />}
     </div>
   );
 }
@@ -220,9 +251,9 @@ function LocalOnly({ label, pcOnline }: { label: string; pcOnline: boolean }) {
   return (
     <div className="h-full grid place-items-center p-6">
       <div className="max-w-md text-center">
-        <MonitorCog className="size-9 mx-auto text-orange-soft" />
+        <MonitorCog className="size-9 mx-auto text-accent-soft" />
         <h2 className="mt-3 font-display text-lg">{label} roda no seu computador</h2>
-        <p className="mt-2 text-[13px] text-muted">Esta função usa arquivos, programas e o terminal do PC. Por segurança, ela fica disponível no aplicativo JARVIS instalado no Windows. Pelo site você conversa, cria imagens e fala por voz sem precisar do PC.{pcOnline ? ' Seu PC está online: peça tarefas no computador pelo chat.' : ''}</p>
+        <p className="mt-2 text-[13px] text-muted">Esta função usa arquivos, programas e o terminal do PC. Por segurança, ela fica disponível no aplicativo Lume instalado no Windows. Pelo site você conversa, cria imagens e fala por voz sem precisar do PC.{pcOnline ? ' Seu PC está online: peça tarefas no computador pelo chat.' : ''}</p>
       </div>
     </div>
   );

@@ -38,7 +38,7 @@ export function SettingsView() {
     <div className="flex flex-col md:flex-row h-full">
       <nav className="md:w-52 shrink-0 border-b md:border-b-0 md:border-r border-line p-2 md:p-3 flex md:flex-col gap-0.5 overflow-x-auto scroll-thin" aria-label="Seções de configurações">
         {tabs.map((t) => (
-          <a key={t.id} href={`#/settings/${t.id}`} aria-current={tab === t.id ? 'page' : undefined} className={cx('press flex items-center gap-2 rounded-lg px-2.5 h-8 text-[13px] whitespace-nowrap', tab === t.id ? 'bg-white/[0.06] text-fg' : 'text-muted hover:text-fg')}><t.icon className={cx('size-4', tab === t.id ? 'text-orange-glow' : 'text-dim')} />{t.label}</a>
+          <a key={t.id} href={`#/settings/${t.id}`} aria-current={tab === t.id ? 'page' : undefined} className={cx('press flex items-center gap-2 rounded-lg px-2.5 h-8 text-[13px] whitespace-nowrap', tab === t.id ? 'bg-white/[0.06] text-fg' : 'text-muted hover:text-fg')}><t.icon className={cx('size-4', tab === t.id ? 'text-accent-glow' : 'text-dim')} />{t.label}</a>
         ))}
       </nav>
       <div className="flex-1 min-w-0 overflow-y-auto scroll-thin">
@@ -106,7 +106,7 @@ function VoiceSettings() {
   const test = async () => {
     setTesting(true);
     try {
-      const r = await fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Olá! Eu sou o Jarvis. Esta é a minha voz, com entonação e pausas naturais. Como posso ajudar hoje?' }) });
+      const r = await fetch(`${api.coreUrl}/api/voice/speak`, { method: 'POST', headers: { authorization: `Bearer ${api.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Olá! Eu sou a Lume. Esta é a minha voz, com entonação e pausas naturais. Como posso ajudar hoje?' }) });
       if (!r.ok) throw new Error((await r.json()).error);
       const url = URL.createObjectURL(await r.blob());
       const a = new Audio(url);
@@ -117,7 +117,7 @@ function VoiceSettings() {
   };
   const slider = (k: string, label: string, min: number, max: number, step: number, hint: string) => (
     <label className="block py-2"><div className="flex text-[12.5px]"><span>{label}</span><span className="ml-auto font-mono text-dim">{Number(s[k] ?? 0).toFixed(2)}</span></div>
-      <input type="range" min={min} max={max} step={step} value={Number(s[k] ?? 0)} onChange={(e) => set({ [k]: Number(e.target.value) })} className="w-full accent-[#ff6d0a]" aria-label={label} />
+      <input type="range" min={min} max={max} step={step} value={Number(s[k] ?? 0)} onChange={(e) => set({ [k]: Number(e.target.value) })} className="w-full accent-[#10b981]" aria-label={label} />
       <div className="text-[11px] text-dim">{hint}</div></label>
   );
   const inst = (c: 'whisper' | 'piper') => installs.data?.[c];
@@ -171,7 +171,7 @@ function VoiceSettings() {
 }
 
 function InstallBtn({ st, onClick, label }: { st?: { status: string; progress: number; error?: string }; onClick: () => void; label: string }) {
-  if (st?.status && !['erro', 'instalado'].includes(st.status)) return <span className="text-[12px] text-muted flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin text-orange" />{st.status} {st.progress ? `${st.progress}%` : ''}</span>;
+  if (st?.status && !['erro', 'instalado'].includes(st.status)) return <span className="text-[12px] text-muted flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin text-accent" />{st.status} {st.progress ? `${st.progress}%` : ''}</span>;
   return <div className="text-right"><Button size="sm" icon={<Download className="size-3.5" />} onClick={onClick}>{label}</Button>{st?.error && <div className="text-[11px] text-err mt-1 max-w-56">{st.error}</div>}</div>;
 }
 
@@ -187,7 +187,7 @@ function Account() {
         <Row label="Código de recuperação" hint="Permite redefinir a senha sem e-mail. Gerar um novo invalida o anterior.">
           <Button size="sm" onClick={async () => { const r = await supabase().rpc('jarvis_new_recovery_code'); if (r.error) notify('err', r.error.message); else setCode((r.data as { recovery_code: string }).recovery_code); }}>Gerar</Button>
         </Row>
-        {code && <div className="mt-2 rounded-xl border border-amber/30 bg-amber/[0.06] p-3 text-[13px]">Guarde agora — não será mostrado de novo:<div className="mt-1 font-mono text-lg tracking-[0.2em] text-amber select-all">{code}</div></div>}
+        {code && <div className="mt-2 rounded-xl border border-warn/30 bg-warn/[0.06] p-3 text-[13px]">Guarde agora — não será mostrado de novo:<div className="mt-1 font-mono text-lg tracking-[0.2em] text-warn select-all">{code}</div></div>}
         <Row label="Sair"><div className="flex gap-2"><Button size="sm" onClick={() => supabase().auth.signOut()}>Deste aparelho</Button><Button size="sm" variant="danger" onClick={() => supabase().auth.signOut({ scope: 'global' })}>De todos</Button></div></Row>
       </Panel>
     </div>
@@ -204,7 +204,7 @@ const AI_PROVIDERS = [
   { id: 'nvidia', name: 'NVIDIA', url: 'https://build.nvidia.com/', hint: 'nvapi-…', what: 'DeepSeek, Qwen Coder, Kimi', how: 'Entre → Get API Key' },
 ] as const;
 
-/** Várias chaves grátis somadas: o Jarvis reveza entre todas (a mais inteligente primeiro). */
+/** Várias chaves grátis somadas: a Lume reveza entre todas (a mais inteligente primeiro). */
 function Brain() {
   const { notify } = useJarvis();
   const st = useAsync(async () => {
@@ -239,10 +239,10 @@ function Brain() {
   const on = new Map((st.data?.keys ?? []).map((k) => [k.provider, k]));
   return (
     <div className="space-y-4 max-w-3xl">
-      <Panel title="Inteligência na nuvem" icon={<Sparkles className="size-4 text-orange-glow" />}>
-        <p className="text-[13px] text-muted">Cada IA grátis tem uma cota por minuto/dia. <b className="text-fg">Conecte quantas quiser</b>: o Jarvis soma todas e reveza sozinho — quando uma enche, usa a próxima, sem você perceber. Quanto mais chaves, mais perto de ilimitado. As chaves ficam só no servidor.</p>
+      <Panel title="Inteligência na nuvem" icon={<Sparkles className="size-4 text-accent-glow" />}>
+        <p className="text-[13px] text-muted">Cada IA grátis tem uma cota por minuto/dia. <b className="text-fg">Conecte quantas quiser</b>: a Lume soma todas e reveza sozinho — quando uma enche, usa a próxima, sem você perceber. Quanto mais chaves, mais perto de ilimitado. As chaves ficam só no servidor.</p>
         <div className="mt-3 flex items-center gap-2 text-[13px]">
-          <span className={cx('size-2 rounded-full', on.size ? 'bg-ok' : 'bg-amber')} />
+          <span className={cx('size-2 rounded-full', on.size ? 'bg-ok' : 'bg-warn')} />
           {st.loading ? 'Verificando…' : on.size ? `${on.size} IA(s) conectada(s)` : 'Nenhuma chave: usando a IA pública gratuita (lenta)'}
         </div>
       </Panel>
@@ -255,7 +255,7 @@ function Brain() {
                 <span className={cx('size-2 rounded-full', k ? 'bg-ok' : 'bg-white/20')} />
                 <span className="text-[14px] font-medium">{p.name}</span>
                 <span className="text-[12px] text-dim">· {p.what}</span>
-                <a href={p.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[12px] text-orange-soft hover:underline inline-flex items-center gap-1">Pegar chave grátis<ExternalLink className="size-3" /></a>
+                <a href={p.url} target="_blank" rel="noopener noreferrer" className="ml-auto text-[12px] text-accent-soft hover:underline inline-flex items-center gap-1">Pegar chave grátis<ExternalLink className="size-3" /></a>
               </div>
               {k ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">

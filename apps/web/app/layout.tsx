@@ -2,12 +2,12 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'JARVIS ULTRA',
-  description: 'Assistente pessoal de IA local com controle autorizado do computador.',
+  title: 'Lume IA',
+  description: 'Lume IA: converse, crie sites e apps com preview ao vivo e fale por voz.',
   icons: { icon: '/icon.svg' },
   manifest: '/manifest.webmanifest',
 };
-export const viewport: Viewport = { themeColor: '#06080c', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
+export const viewport: Viewport = { themeColor: '#050606', width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

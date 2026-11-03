@@ -44,13 +44,13 @@ export function MonitorView() {
       <Panel title="GPU / VRAM" icon={<MonitorSmartphone className="size-4" />}>
         {g ? <><Stat label={g.name} value={g.vramUsedMb ?? '—'} unit={`/ ${g.vramTotalMb ?? '—'} MB`} hint={g.utilPercent != null ? `utilização ${g.utilPercent}%` : 'utilização indisponível'} /><Spark data={hist.vram} /></> : <p className="text-[12.5px] text-muted">Nenhuma GPU detectada (nvidia-smi indisponível). A inferência roda na CPU.</p>}
       </Panel>
-      <Panel title="JARVIS" icon={<Activity className="size-4" />}>
+      <Panel title="Lume" icon={<Activity className="size-4" />}>
         <div className="grid grid-cols-2 gap-3"><Stat label="processo" value={d?.jarvis.rssMb ?? '—'} unit="MB" /><Stat label="tarefas ativas" value={d?.activeTasks ?? status?.device?.activeTasks ?? '—'} /></div>
         <div className="mt-3 text-[11.5px] text-dim">Ativo há {d ? Math.round(d.uptimeSec / 60) : '—'} min</div>
       </Panel>
 
       <Panel title="Latência real do modelo (últimas 40 respostas)" icon={<Timer className="size-4" />} className="md:col-span-2">
-        {!gens.length ? <p className="text-[12.5px] text-muted">{api.mode === 'local' ? 'Converse com o JARVIS para gerar medições.' : 'Disponível no app do computador.'}</p> : (
+        {!gens.length ? <p className="text-[12.5px] text-muted">{api.mode === 'local' ? 'Converse com a Lume para gerar medições.' : 'Disponível no app do computador.'}</p> : (
           <>
             <div className="grid grid-cols-3 gap-4">
               <Stat label="TTFT mediano" value={med(gens.map((x) => x.timeToFirstTokenMs ?? 0).filter(Boolean)) ?? '—'} unit="ms" />
@@ -64,7 +64,7 @@ export function MonitorView() {
       </Panel>
       <Panel title="Modelos na memória" icon={<Cpu className="size-4" />}>
         {d?.ollamaLoaded?.length ? d.ollamaLoaded.map((m) => (
-          <div key={m.name} className="mb-2"><div className="font-mono text-[12px] text-orange-soft truncate">{m.name}</div><div className="text-[11px] text-dim">{(m.size / 1e9).toFixed(1)} GB · {m.size ? Math.round((m.size_vram / m.size) * 100) : 0}% na GPU</div><Meter value={m.size_vram} max={m.size || 1} /></div>
+          <div key={m.name} className="mb-2"><div className="font-mono text-[12px] text-accent-soft truncate">{m.name}</div><div className="text-[11px] text-dim">{(m.size / 1e9).toFixed(1)} GB · {m.size ? Math.round((m.size_vram / m.size) * 100) : 0}% na GPU</div><Meter value={m.size_vram} max={m.size || 1} /></div>
         )) : <p className="text-[12.5px] text-muted">Nenhum modelo carregado.</p>}
       </Panel>
       <Panel title="Conexão" icon={<Wifi className="size-4" />}>

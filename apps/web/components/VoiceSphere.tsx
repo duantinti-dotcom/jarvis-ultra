@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 
 export type SphereState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error' | 'offline';
 const COLORS: Record<SphereState, [number, number, number]> = {
-  idle: [255, 138, 43], listening: [255, 179, 92], thinking: [255, 109, 10], speaking: [255, 196, 107], error: [255, 93, 103], offline: [110, 116, 128],
+  idle: [16, 185, 129], listening: [52, 211, 153], thinking: [110, 231, 183], speaking: [167, 243, 208], error: [255, 93, 103], offline: [110, 116, 128],
 };
 
 /**
@@ -95,5 +95,5 @@ export function VoiceSphere({ state, level, size = 360 }: { state: SphereState; 
     document.addEventListener('visibilitychange', vis);
     return () => { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', vis); };
   }, [size]);
-  return <canvas ref={ref} style={{ width: size, height: size }} role="img" aria-label={`Jarvis: ${state}`} />;
+  return <canvas ref={ref} style={{ width: size, height: size }} role="img" aria-label={`Lume: ${state}`} />;
 }

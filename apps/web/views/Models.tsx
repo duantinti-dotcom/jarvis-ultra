@@ -52,14 +52,14 @@ export function ModelsView() {
       <div className="grid gap-4 md:grid-cols-3">
         {data && Object.entries(data.profiles).map(([k, p]) => (
           <button key={k} onClick={() => act(() => api.req('/api/models/profile', { method: 'POST', json: { profile: k } }), `Perfil ${k} ativo`)}
-            className={cx('glass glass-hover rounded-2xl p-4 text-left', data.profile === k && '!border-orange/60 shadow-[0_0_40px_-18px_#ff6a00]')}>
-            <div className="flex items-center gap-2"><span className="font-display font-semibold tracking-widest">{p.label}</span>{data.profile === k && <Check className="size-4 text-orange" />}{data.suggestion?.profile === k && <Badge tone="orange" className="ml-auto">sugerido</Badge>}</div>
+            className={cx('glass glass-hover rounded-2xl p-4 text-left', data.profile === k && '!border-accent/60')}>
+            <div className="flex items-center gap-2"><span className="font-display font-semibold tracking-widest">{p.label}</span>{data.profile === k && <Check className="size-4 text-accent" />}{data.suggestion?.profile === k && <Badge tone="orange" className="ml-auto">sugerido</Badge>}</div>
             <p className="mt-1.5 text-[12px] text-muted">{p.description}</p>
             <p className="mt-2 text-[10.5px] font-mono text-dim">até {p.maxParamsB}B · contexto {p.numCtx}</p>
           </button>
         ))}
       </div>
-      {data?.suggestion && <p className="text-[12px] text-dim">Sugestão para seu hardware: <b className="text-orange-soft">{data.suggestion.profile}</b> — {data.suggestion.reason} Memória disponível agora para modelos: ~{data.budgetGb.toFixed(1)} GB.</p>}
+      {data?.suggestion && <p className="text-[12px] text-dim">Sugestão para seu hardware: <b className="text-accent-soft">{data.suggestion.profile}</b> — {data.suggestion.reason} Memória disponível agora para modelos: ~{data.budgetGb.toFixed(1)} GB.</p>}
 
       <Panel title="Modelos instalados" icon={<Cpu className="size-4" />}>
         {!data?.installed.length ? <Empty title="Nenhum modelo instalado">Instale um modelo do catálogo abaixo.</Empty> : (
@@ -69,7 +69,7 @@ export function ModelsView() {
               <tbody>
                 {data.installed.map((m) => (
                   <tr key={m.name} className="border-t border-line">
-                    <td className="py-2 pr-3"><div className="font-mono text-orange-soft">{m.name}</div><div className="text-[10.5px] text-dim">{m.paramsB}B · {m.details.quantization_level ?? ''} · {m.details.family}</div></td>
+                    <td className="py-2 pr-3"><div className="font-mono text-accent-soft">{m.name}</div><div className="text-[10.5px] text-dim">{m.paramsB}B · {m.details.quantization_level ?? ''} · {m.details.family}</div></td>
                     <td className="pr-3 tabular-nums">{fmtBytes(m.size)}</td>
                     <td className="pr-3 tabular-nums">{m.estimatedMemoryGb} GB</td>
                     <td className="pr-3"><div className="flex flex-wrap gap-1">{m.capabilities.filter((c) => c !== 'completion').map((c) => <Badge key={c}>{c}</Badge>)}</div></td>

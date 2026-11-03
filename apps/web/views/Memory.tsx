@@ -34,9 +34,9 @@ export function MemoryView() {
     <div className="p-3 sm:p-5 max-w-[1300px] mx-auto grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <div className="space-y-4">
         <Panel title="Categorias" icon={<Database className="size-4" />} bodyClass="p-2">
-          <button onClick={() => setCat('')} className={cx('w-full text-left px-3 h-9 rounded-lg text-[13px]', !cat ? 'bg-orange/10 text-fg' : 'text-muted hover:bg-white/5')}>Todas</button>
+          <button onClick={() => setCat('')} className={cx('w-full text-left px-3 h-9 rounded-lg text-[13px]', !cat ? 'bg-accent/10 text-fg' : 'text-muted hover:bg-white/5')}>Todas</button>
           {Object.entries(CATS).map(([k, v]) => (
-            <div key={k} className={cx('flex items-center rounded-lg pr-2', cat === k ? 'bg-orange/10' : 'hover:bg-white/5')}>
+            <div key={k} className={cx('flex items-center rounded-lg pr-2', cat === k ? 'bg-accent/10' : 'hover:bg-white/5')}>
               <button onClick={() => setCat(k)} className={cx('flex-1 text-left px-3 h-9 text-[13px]', cat === k ? 'text-fg' : 'text-muted')}>{v}</button>
               {local && <Toggle label={`Ativar ${v}`} checked={!cats.data?.disabled.includes(k)} onChange={(on) => act(() => api.req('/api/memory-categories', { method: 'POST', json: { category: k, enabled: on } }).then(() => cats.reload()))} />}
             </div>

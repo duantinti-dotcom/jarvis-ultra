@@ -6,7 +6,7 @@ import { supabase, remoteConfigured } from './remote';
 import { usernameToEmail } from '@/components/Boot';
 
 /**
- * Ponte para a IA da nuvem também no app do PC: o Jarvis Code usa a mesma IA do site
+ * Ponte para a IA da nuvem também no app do PC: a Lume Code usa a mesma IA do site
  * (que cria sites de verdade) em vez do modelo pequeno instalado no computador.
  */
 let bridge: JarvisApi | null = null;

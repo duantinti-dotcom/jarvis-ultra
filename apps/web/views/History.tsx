@@ -36,17 +36,17 @@ export function HistoryView() {
           {hits && (
             <section className="mt-4">
               <div className="label-tech mb-2">Encontrado nas mensagens ({hits.length})</div>
-              <ul className="space-y-1.5">{hits.map((h, i) => <li key={i}><button onClick={() => open(h.conversationId)} className="w-full text-left surface rounded-xl px-3.5 py-2.5 hover:border-orange/30"><div className="text-[13px] font-medium truncate">{h.conversationTitle}</div><div className="text-[12px] text-muted line-clamp-2">{h.content}</div><div className="text-[10.5px] text-dim mt-0.5">{fmtAgo(h.createdAt)}</div></button></li>)}</ul>
+              <ul className="space-y-1.5">{hits.map((h, i) => <li key={i}><button onClick={() => open(h.conversationId)} className="w-full text-left surface rounded-xl px-3.5 py-2.5 hover:border-accent/30"><div className="text-[13px] font-medium truncate">{h.conversationTitle}</div><div className="text-[12px] text-muted line-clamp-2">{h.content}</div><div className="text-[10.5px] text-dim mt-0.5">{fmtAgo(h.createdAt)}</div></button></li>)}</ul>
             </section>
           )}
           <section className="mt-5">
             <div className="label-tech mb-2">Conversas ({items.length})</div>
-            {!items.length ? <Empty icon={<MessageSquare className="size-7" />} title="Nenhuma conversa">Suas conversas com o Jarvis aparecem aqui.</Empty> : (
+            {!items.length ? <Empty icon={<MessageSquare className="size-7" />} title="Nenhuma conversa">Suas conversas com a Lume aparecem aqui.</Empty> : (
               <ul className="grid gap-2 sm:grid-cols-2">
                 {items.map((c) => (
                   <li key={c.id}>
-                    <button onClick={() => open(c.id)} className="press w-full text-left surface rounded-xl px-3.5 py-3 hover:border-orange/30">
-                      <div className="flex items-center gap-2">{c.pinned && <Pin className="size-3 text-orange-soft" />}<span className="text-[13px] font-medium truncate">{c.title}</span></div>
+                    <button onClick={() => open(c.id)} className="press w-full text-left surface rounded-xl px-3.5 py-3 hover:border-accent/30">
+                      <div className="flex items-center gap-2">{c.pinned && <Pin className="size-3 text-accent-soft" />}<span className="text-[13px] font-medium truncate">{c.title}</span></div>
                       <div className="text-[11px] text-dim mt-0.5">{fmtAgo(c.updatedAt)} · {c.messageCount ?? 0} mensagens{c.origin === 'remote' ? ' · pelo celular' : ''}</div>
                     </button>
                   </li>

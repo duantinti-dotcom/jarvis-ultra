@@ -5,11 +5,11 @@ import type { CoreVisualState } from '@jarvis/contracts';
 type Props = { state: CoreVisualState; level?: number; size?: number; className?: string };
 
 const PALETTE: Record<CoreVisualState, { hue: [number, number, number]; speed: number; intensity: number }> = {
-  idle: { hue: [255, 106, 0], speed: 0.25, intensity: 0.55 },
-  listening: { hue: [255, 140, 50], speed: 0.5, intensity: 0.85 },
-  thinking: { hue: [255, 120, 20], speed: 1.6, intensity: 0.9 },
-  speaking: { hue: [255, 150, 70], speed: 0.8, intensity: 1 },
-  executing: { hue: [255, 106, 0], speed: 1.2, intensity: 0.95 },
+  idle: { hue: [16, 185, 129], speed: 0.25, intensity: 0.55 },
+  listening: { hue: [52, 211, 153], speed: 0.5, intensity: 0.85 },
+  thinking: { hue: [110, 231, 183], speed: 1.6, intensity: 0.9 },
+  speaking: { hue: [167, 243, 208], speed: 0.8, intensity: 1 },
+  executing: { hue: [16, 185, 129], speed: 1.2, intensity: 0.95 },
   success: { hue: [53, 212, 154], speed: 0.6, intensity: 0.9 },
   error: { hue: [255, 93, 103], speed: 0.9, intensity: 0.9 },
   offline: { hue: [110, 118, 132], speed: 0.08, intensity: 0.25 },
@@ -18,7 +18,7 @@ const PALETTE: Record<CoreVisualState, { hue: [number, number, number]; speed: n
 type Particle = { a: number; r: number; v: number; s: number; life: number };
 
 /**
- * Núcleo JARVIS em Canvas 2D. Custo baixo: ~30 fps em repouso, 60 fps quando
+ * Núcleo Lume em Canvas 2D. Custo baixo: ~30 fps em repouso, 60 fps quando
  * ativo, pausa com a aba oculta e respeita "reduzir movimento".
  */
 export function JarvisCore({ state, level = 0, size = 340, className }: Props) {
@@ -166,7 +166,7 @@ export function JarvisCore({ state, level = 0, size = 340, className }: Props) {
     };
   }, [size]);
 
-  return <canvas ref={ref} role="img" aria-label={`Núcleo JARVIS: ${LABEL[state]}`} style={{ width: size, height: size }} className={className} />;
+  return <canvas ref={ref} role="img" aria-label={`Núcleo Lume: ${LABEL[state]}`} style={{ width: size, height: size }} className={className} />;
 }
 
 function spawn(size: number): Particle {

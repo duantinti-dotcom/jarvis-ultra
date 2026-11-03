@@ -9,7 +9,7 @@ export function Panel({ title, icon, actions, children, className, bodyClass }: 
     <section className={cx('glass rounded-2xl animate-fade-up min-w-0', className)}>
       {title && (
         <header className="flex items-center gap-2 px-4 pt-3.5 pb-2.5 border-b border-line">
-          {icon && <span className="text-orange">{icon}</span>}
+          {icon && <span className="text-accent">{icon}</span>}
           <h2 className="font-display text-[13.5px] font-semibold tracking-wide text-fg/95">{title}</h2>
           <div className="ml-auto flex items-center gap-2">{actions}</div>
         </header>
@@ -26,9 +26,9 @@ export function Button({ variant = 'subtle', size = 'md', loading, icon, classNa
       {...rest}
       disabled={disabled || loading}
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange disabled:opacity-45 disabled:cursor-not-allowed active:scale-[0.98]',
+        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-45 disabled:cursor-not-allowed active:scale-[0.98]',
         size === 'sm' ? 'h-8 px-3 text-[12.5px]' : 'h-10 px-4 text-[13.5px]',
-        variant === 'primary' && 'bg-gradient-to-b from-orange to-[#e85d00] text-black hover:brightness-110 shadow-[0_8px_24px_-10px_rgba(255,109,10,0.8)]',
+        variant === 'primary' && 'btn-accent',
         variant === 'subtle' && 'bg-white/[0.05] border border-line hover:border-line-strong hover:bg-white/[0.08] text-fg',
         variant === 'ghost' && 'text-muted hover:text-fg hover:bg-white/[0.05]',
         variant === 'danger' && 'bg-err/12 text-err border border-err/30 hover:bg-err/20',
@@ -44,14 +44,14 @@ export function Button({ variant = 'subtle', size = 'md', loading, icon, classNa
 export function Badge({ tone = 'neutral', children, className, pulse }: { tone?: 'neutral' | 'orange' | 'ok' | 'err' | 'warn'; children: ReactNode; className?: string; pulse?: boolean }) {
   const tones = {
     neutral: 'bg-white/[0.06] text-muted border-line',
-    orange: 'bg-orange/12 text-orange-soft border-orange/25',
+    orange: 'bg-accent/12 text-accent-soft border-accent/25',
     ok: 'bg-ok/10 text-ok border-ok/25',
     err: 'bg-err/10 text-err border-err/25',
     warn: 'bg-warn/10 text-warn border-warn/25',
   };
   return (
     <span className={cx('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', tones[tone], className)}>
-      {pulse && <span className={cx('size-1.5 rounded-full animate-pulse-soft', tone === 'ok' ? 'bg-ok' : tone === 'err' ? 'bg-err' : tone === 'warn' ? 'bg-warn' : 'bg-orange')} />}
+      {pulse && <span className={cx('size-1.5 rounded-full animate-pulse-soft', tone === 'ok' ? 'bg-ok' : tone === 'err' ? 'bg-err' : tone === 'warn' ? 'bg-warn' : 'bg-accent')} />}
       {children}
     </span>
   );
@@ -74,7 +74,7 @@ export function Meter({ value, max = 100, tone = 'orange' }: { value: number; ma
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div className="h-1.5 w-full rounded-full bg-white/[0.06] overflow-hidden" role="meter" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-      <div className={cx('h-full rounded-full transition-[width] duration-700', tone === 'orange' ? 'bg-gradient-to-r from-orange to-orange-soft' : tone === 'ok' ? 'bg-ok' : 'bg-err')} style={{ width: `${pct}%` }} />
+      <div className={cx('h-full rounded-full transition-[width] duration-700', tone === 'orange' ? 'bg-gradient-to-r from-accent to-accent-soft' : tone === 'ok' ? 'bg-ok' : 'bg-err')} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -82,23 +82,23 @@ export function Meter({ value, max = 100, tone = 'orange' }: { value: number; ma
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
-      className={cx('relative h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-40', checked ? 'bg-orange/80 border-orange' : 'bg-white/[0.06] border-line-strong')}>
+      className={cx('relative h-5 w-9 shrink-0 rounded-full border transition-colors disabled:opacity-40', checked ? 'bg-accent/80 border-accent' : 'bg-white/[0.06] border-line-strong')}>
       <span className={cx('absolute top-0.5 size-3.5 rounded-full bg-white transition-all', checked ? 'left-[18px]' : 'left-0.5')} />
     </button>
   );
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={cx('h-10 w-full rounded-xl bg-black/30 border border-line px-3 text-[13.5px] placeholder:text-dim outline-none focus:border-orange/60 focus:ring-2 focus:ring-orange/15 transition', props.className)} />;
+  return <input {...props} className={cx('h-10 w-full rounded-lg bg-black/40 border border-line px-3 text-[13.5px] placeholder:text-dim outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/15 transition', props.className)} />;
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cx('w-full rounded-xl bg-black/30 border border-line px-3 py-2.5 text-[13.5px] placeholder:text-dim outline-none focus:border-orange/60 focus:ring-2 focus:ring-orange/15 transition scroll-thin', props.className)} />;
+  return <textarea {...props} className={cx('w-full rounded-lg bg-black/40 border border-line px-3 py-2.5 text-[13.5px] placeholder:text-dim outline-none focus:border-accent/60 focus:ring-2 focus:ring-accent/15 transition scroll-thin', props.className)} />;
 }
 
 export function Select({ value, onChange, options, className }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; className?: string }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={cx('h-9 rounded-xl bg-black/30 border border-line px-2.5 text-[13px] outline-none focus:border-orange/60', className)}>
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={cx('h-9 rounded-xl bg-black/30 border border-line px-2.5 text-[13px] outline-none focus:border-accent/60', className)}>
       {options.map((o) => <option key={o.value} value={o.value} className="bg-surface">{o.label}</option>)}
     </select>
   );
@@ -134,3 +134,16 @@ export const fmtAgo = (iso: string | null | undefined) => {
   return `${Math.round(s / 86400)} d atrás`;
 };
 export const fmtBytes = (n: number) => (n > 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n > 1e6 ? `${(n / 1e6).toFixed(0)} MB` : `${(n / 1e3).toFixed(0)} KB`);
+
+/** Marca Lume: um feixe de luz esmeralda (sem brilho neon). */
+export function LumeMark({ className = 'size-8' }: { className?: string }) {
+  return (
+    <span className={cx('relative grid place-items-center rounded-[10px] bg-[#07110d] border border-accent/30', className)}>
+      <svg viewBox="0 0 32 32" className="size-[62%]" aria-hidden>
+        <path d="M10 6v16.5c0 1.9 1.6 3.5 3.5 3.5H24" fill="none" stroke="#34d399" strokeWidth="3.2" strokeLinecap="round" />
+        <circle cx="22" cy="10" r="3.2" fill="#6ee7b7" />
+      </svg>
+    </span>
+  );
+}
+

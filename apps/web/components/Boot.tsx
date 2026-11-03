@@ -5,7 +5,8 @@ import { remoteConfigured, supabase, listDevices, createHybridApi, isOnline } fr
 import type { JarvisApi, Device } from '@/lib/types';
 import { JarvisProvider } from '@/lib/store';
 import { Shell } from './Shell';
-import { JarvisCore } from './JarvisCore';
+import { LumeMark } from './ui';
+import { MessageSquare, Code2, AudioLines } from 'lucide-react';
 import { Button, Input, ErrorNote, Badge, fmtAgo } from './ui';
 import { PairingPanel } from '@/views/Devices';
 
@@ -41,23 +42,40 @@ export function Boot() {
   }, []);
 
   if (st.kind === 'ready') return <JarvisProvider api={st.api}><Shell device={st.device} /></JarvisProvider>;
+  const features = [
+    { icon: MessageSquare, title: 'Chat inteligente', text: 'Respostas em segundos, com raciocínio, código formatado e criação de imagens.' },
+    { icon: Code2, title: 'Lume Code', text: 'Descreva um site ou app: a Lume planeja o design, escreve o código e mostra o preview.' },
+    { icon: AudioLines, title: 'Voz', text: 'Converse falando, com transcrição e voz natural.' },
+  ];
   return (
     <main className="h-dvh overflow-y-auto scroll-thin">
-      <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
-        <JarvisCore state={st.kind === 'loading' ? 'thinking' : 'idle'} size={220} />
-        <h1 className="mt-2 font-display text-3xl font-semibold tracking-[0.2em] glow-text">JARVIS<span className="text-orange"> ULTRA</span></h1>
-        <p className="label-tech mt-2">Orange Neural Interface</p>
-        <div className="mt-8 w-full max-w-md">
-          {st.kind === 'loading' && <p className="text-center text-muted text-sm">Conectando…</p>}
-          {st.kind === 'login' && <Login onDone={() => resolveRemote()} />}
-          {st.kind === 'pick' && <Pick devices={st.devices} onPick={(d) => { localStorage.setItem('jarvis.device', d.id); setSt({ kind: 'ready', api: createHybridApi(d.id), device: d }); }} onRefresh={resolveRemote} />}
-          {st.kind === 'unconfigured' && (
-            <div className="surface-raised rounded-2xl p-5 text-sm text-muted space-y-2">
-              <p className="text-fg font-medium">Nenhum JARVIS Core encontrado.</p>
-              <p>No computador, abra o aplicativo <b>JARVIS ULTRA</b>. Para usar pelo celular, este site precisa das variáveis <code>NEXT_PUBLIC_SUPABASE_URL</code> e <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> (veja docs/installation).</p>
-            </div>
-          )}
-        </div>
+      <div className="min-h-full grid lg:grid-cols-[1.1fr_1fr]">
+        <section className="flex flex-col justify-center px-6 sm:px-12 py-10 lg:py-16 border-b lg:border-b-0 lg:border-r border-line">
+          <div className="flex items-center gap-3 enter"><LumeMark className="size-10" /><span className="font-display text-[22px] font-semibold tracking-tight">Lume<span className="text-accent-glow"> IA</span></span></div>
+          <h1 className="enter mt-10 font-display text-[32px] sm:text-[42px] leading-[1.08] font-semibold tracking-tight max-w-xl" style={{ animationDelay: '60ms' }}>Converse, crie e publique com uma IA que <span className="text-accent-glow">entrega pronto</span>.</h1>
+          <p className="enter mt-4 text-[15px] text-muted max-w-lg" style={{ animationDelay: '120ms' }}>Uma plataforma só para conversar, criar sites e apps completos com preview ao vivo e falar por voz.</p>
+          <ul className="mt-10 space-y-5 max-w-lg">
+            {features.map((f, i) => (
+              <li key={f.title} className="enter flex gap-3.5" style={{ animationDelay: `${180 + i * 60}ms` }}>
+                <span className="grid place-items-center size-9 shrink-0 rounded-lg border border-line bg-white/[0.02]"><f.icon className="size-[17px] text-accent-glow" /></span>
+                <div><div className="text-[14px] font-medium">{f.title}</div><div className="text-[13px] text-dim mt-0.5">{f.text}</div></div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="flex flex-col justify-center px-6 sm:px-12 py-10">
+          <div className="w-full max-w-sm mx-auto enter" style={{ animationDelay: '100ms' }}>
+            {st.kind === 'loading' && <div className="flex items-center justify-center gap-2 text-muted text-sm"><span className="size-4 rounded-full border-2 border-accent/30 border-t-accent animate-spin" />Conectando…</div>}
+            {st.kind === 'login' && <Login onDone={() => resolveRemote()} />}
+            {st.kind === 'pick' && <Pick devices={st.devices} onPick={(d) => { localStorage.setItem('jarvis.device', d.id); setSt({ kind: 'ready', api: createHybridApi(d.id), device: d }); }} onRefresh={resolveRemote} />}
+            {st.kind === 'unconfigured' && (
+              <div className="surface-raised rounded-2xl p-5 text-sm text-muted space-y-2">
+                <p className="text-fg font-medium">Nenhum núcleo encontrado.</p>
+                <p>No computador, abra o aplicativo <b>Lume IA</b>. Para usar pelo navegador, este site precisa das variáveis <code>NEXT_PUBLIC_SUPABASE_URL</code> e <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.</p>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
@@ -103,9 +121,9 @@ function Login({ onDone }: { onDone: () => void }) {
       <div className="surface-raised rounded-2xl p-5 space-y-3">
         <div className="font-display text-lg">Guarde seu código de recuperação</div>
         <p className="text-[13px] text-muted">Ele permite redefinir sua senha sem e-mail. Anote ou salve em local seguro: ele não será mostrado de novo.</p>
-        <div className="rounded-xl border border-amber/30 bg-amber/[0.06] p-3 text-center font-mono text-xl tracking-[0.2em] text-amber select-all">{recovery}</div>
+        <div className="rounded-xl border border-warn/30 bg-warn/[0.06] p-3 text-center font-mono text-xl tracking-[0.2em] text-warn select-all">{recovery}</div>
         <Button variant="subtle" className="w-full" onClick={() => void navigator.clipboard.writeText(recovery)}>Copiar código</Button>
-        <Button variant="primary" className="w-full" onClick={onDone}>Já guardei, entrar no Jarvis</Button>
+        <Button variant="primary" className="w-full" onClick={onDone}>Já guardei, entrar na Lume</Button>
       </div>
     );
   }
@@ -137,7 +155,7 @@ function Pick({ devices, onPick, onRefresh }: { devices: Device[]; onPick: (d: D
     <div className="surface-raised rounded-2xl p-4 space-y-2">
       <div className="font-display text-base mb-1">Escolha o computador</div>
       {devices.map((d) => (
-        <button key={d.id} onClick={() => onPick(d)} className="w-full flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:border-orange/40 text-left">
+        <button key={d.id} onClick={() => onPick(d)} className="w-full flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 hover:border-accent/40 text-left">
           <span className="font-medium">{d.name}</span>
           <span className="text-dim text-xs">{d.platform}</span>
           <span className="ml-auto">{isOnline(d) ? <Badge tone="ok" pulse>online</Badge> : <Badge>offline · {fmtAgo(d.last_seen_at)}</Badge>}</span>

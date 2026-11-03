@@ -29,7 +29,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const items = useMemo<Item[]>(() => {
     const base: Item[] = [
       { id: 'new', label: 'Nova conversa', hint: 'Ctrl Shift O', group: 'Ações', icon: <MessageSquare className="size-4" />, run: () => { void chat.open(null); go('#/chat')(); } },
-      { id: 'voice', label: 'Falar com Jarvis', hint: 'Ctrl Shift V', group: 'Ações', icon: <Zap className="size-4" />, run: go('#/voice?auto=1') },
+      { id: 'voice', label: 'Falar com Lume', hint: 'Ctrl Shift V', group: 'Ações', icon: <Zap className="size-4" />, run: go('#/voice?auto=1') },
       { id: 'm-fast', label: 'Modo de raciocínio: Rápido', group: 'Ações', run: () => { chat.setMode('fast'); notify('ok', 'Modo Rápido'); onClose(); } },
       { id: 'm-bal', label: 'Modo de raciocínio: Equilibrado', group: 'Ações', run: () => { chat.setMode('balanced'); notify('ok', 'Modo Equilibrado'); onClose(); } },
       { id: 'm-deep', label: 'Modo de raciocínio: Profundo', group: 'Ações', run: () => { chat.setMode('deep'); notify('ok', 'Modo Profundo'); onClose(); } },
@@ -67,7 +67,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
               <li key={it.id}>
                 {header && <div className="px-2.5 pt-2.5 pb-1 label-tech">{header}</div>}
                 <button role="option" aria-selected={i === sel} onMouseEnter={() => setSel(i)} onClick={it.run}
-                  className={cx('w-full flex items-center gap-2.5 rounded-lg px-2.5 h-9 text-left text-[13px]', i === sel ? 'bg-orange/[0.12] text-fg' : 'text-muted')}>
+                  className={cx('w-full flex items-center gap-2.5 rounded-lg px-2.5 h-9 text-left text-[13px]', i === sel ? 'bg-accent/[0.12] text-fg' : 'text-muted')}>
                   <span className="text-dim">{it.icon}</span>
                   <span className="truncate">{it.label}</span>
                   {it.hint && <span className="ml-auto pl-3 truncate text-[11px] text-dim max-w-[45%]">{it.hint}</span>}

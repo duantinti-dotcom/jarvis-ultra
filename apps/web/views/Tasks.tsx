@@ -35,7 +35,7 @@ export function TasksView() {
             <ul className="space-y-2">
               {approvals.map((a) => (
                 <li key={a.id} className="rounded-xl border border-warn/25 bg-warn/[0.04] p-3">
-                  <div className="flex items-center gap-2"><span className="font-mono text-[12.5px] text-orange-soft">{a.tool}</span><Badge tone={a.risk === 'high' ? 'err' : 'warn'}>{a.risk}</Badge><span className="ml-auto label-tech">{a.origin}</span></div>
+                  <div className="flex items-center gap-2"><span className="font-mono text-[12.5px] text-accent-soft">{a.tool}</span><Badge tone={a.risk === 'high' ? 'err' : 'warn'}>{a.risk}</Badge><span className="ml-auto label-tech">{a.origin}</span></div>
                   <pre className="mt-1.5 text-[11px] font-mono text-muted whitespace-pre-wrap break-all">{JSON.stringify(a.args)}</pre>
                   <div className="mt-2 flex gap-2"><Button size="sm" variant="primary" onClick={() => decide(a.id, true)}>Aprovar</Button><Button size="sm" variant="ghost" onClick={() => decide(a.id, false)}>Negar</Button></div>
                 </li>
@@ -44,14 +44,14 @@ export function TasksView() {
           </Panel>
         )}
         <Panel title="Fila de tarefas" icon={<ListChecks className="size-4" />} actions={
-          <div className="flex gap-1">{['all', 'active', 'completed', 'failed'].map((f) => <button key={f} onClick={() => setFilter(f)} className={cx('px-2 h-6 rounded-md text-[11px]', filter === f ? 'bg-orange/15 text-orange-soft' : 'text-dim hover:text-fg')}>{{ all: 'todas', active: 'ativas', completed: 'concluídas', failed: 'falhas' }[f]}</button>)}</div>
+          <div className="flex gap-1">{['all', 'active', 'completed', 'failed'].map((f) => <button key={f} onClick={() => setFilter(f)} className={cx('px-2 h-6 rounded-md text-[11px]', filter === f ? 'bg-accent/15 text-accent-soft' : 'text-dim hover:text-fg')}>{{ all: 'todas', active: 'ativas', completed: 'concluídas', failed: 'falhas' }[f]}</button>)}</div>
         } bodyClass="p-2">
           <ErrorNote error={list.error} />
-          {!tasks.length ? <Empty title="Nenhuma tarefa">Peça uma ação ao JARVIS e ela aparece aqui com cada etapa registrada.</Empty> : (
+          {!tasks.length ? <Empty title="Nenhuma tarefa">Peça uma ação à Lume e ela aparece aqui com cada etapa registrada.</Empty> : (
             <ul>
               {tasks.map((t) => (
                 <li key={t.id}>
-                  <button onClick={() => setSel(t.id)} className={cx('w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition', sel === t.id ? 'bg-orange/[0.08]' : 'hover:bg-white/[0.03]')}>
+                  <button onClick={() => setSel(t.id)} className={cx('w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition', sel === t.id ? 'bg-accent/[0.08]' : 'hover:bg-white/[0.03]')}>
                     <TaskStateBadge state={t.state} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] truncate">{t.goal}</div>
@@ -90,9 +90,9 @@ export function TasksView() {
                       return (
                         <li key={s.id} className="ml-4">
                           <span className="absolute -left-[7px] mt-1 grid place-items-center size-3.5 rounded-full bg-bg">
-                            {s.state === 'running' ? <Loader2 className="size-3.5 animate-spin text-orange" /> : s.state === 'done' ? <CheckCircle2 className="size-3.5 text-ok" /> : <XCircle className="size-3.5 text-err" />}
+                            {s.state === 'running' ? <Loader2 className="size-3.5 animate-spin text-accent" /> : s.state === 'done' ? <CheckCircle2 className="size-3.5 text-ok" /> : <XCircle className="size-3.5 text-err" />}
                           </span>
-                          <div className="text-[12.5px]"><span className="font-mono text-orange-soft">{s.tool}</span> <span className="text-dim">· {s.agent}</span></div>
+                          <div className="text-[12.5px]"><span className="font-mono text-accent-soft">{s.tool}</span> <span className="text-dim">· {s.agent}</span></div>
                           <pre className="text-[11px] font-mono text-muted whitespace-pre-wrap break-all">{JSON.stringify(s.args)}</pre>
                           {s.error && <div className="text-[12px] text-err">{s.error}</div>}
                           {v && <div className={cx('text-[11.5px]', v.ok ? 'text-ok' : 'text-err')}>verificação: {v.detail}</div>}

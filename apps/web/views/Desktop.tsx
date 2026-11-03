@@ -37,18 +37,18 @@ export function DesktopView() {
       <div className="space-y-5 min-w-0">
         {/* Pedir uma tarefa */}
         <section className="surface-raised rounded-2xl p-4">
-          <h2 className="font-display text-[15px]">O que o Jarvis deve fazer no computador?</h2>
+          <h2 className="font-display text-[15px]">O que a Lume deve fazer no computador?</h2>
           <p className="text-[12.5px] text-dim mt-0.5">Ex.: “abra o Bloco de Notas e escreva a lista de compras”, “organize os PDFs da pasta Downloads por mês”.</p>
           <div className="mt-3 flex items-end gap-2">
             <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(); } }} aria-label="Tarefa para o computador"
-              className="flex-1 resize-none rounded-xl bg-black/30 border border-line px-3 py-2.5 text-[14px] outline-none focus:border-orange/50" placeholder="Descreva a tarefa…" />
-            <button aria-label="Executar" onClick={ask} disabled={!text.trim() || chat.busy} className="press grid place-items-center size-11 rounded-xl bg-gradient-to-b from-orange to-[#e85d00] text-black disabled:opacity-30"><ArrowUp className="size-5" /></button>
+              className="flex-1 resize-none rounded-xl bg-black/30 border border-line px-3 py-2.5 text-[14px] outline-none focus:border-accent/50" placeholder="Descreva a tarefa…" />
+            <button aria-label="Executar" onClick={ask} disabled={!text.trim() || chat.busy} className="press grid place-items-center size-11 rounded-xl btn-accent disabled:opacity-30"><ArrowUp className="size-5" /></button>
           </div>
         </section>
 
         {/* Execução ao vivo */}
         <section className="surface rounded-2xl p-4" aria-live="polite">
-          {!current ? <Empty icon={<History className="size-7" />} title="Nenhuma tarefa em execução">Quando o Jarvis trabalhar no computador, você acompanha aqui cada etapa.</Empty> : <Execution t={current} reply={reply?.content} />}
+          {!current ? <Empty icon={<History className="size-7" />} title="Nenhuma tarefa em execução">Quando a Lume trabalhar no computador, você acompanha aqui cada etapa.</Empty> : <Execution t={current} reply={reply?.content} />}
         </section>
 
         <section className="surface rounded-2xl p-4">
@@ -57,7 +57,7 @@ export function DesktopView() {
             <ul className="divide-y divide-[var(--color-line)]">
               {recent.data.slice(0, 8).map((t) => (
                 <li key={t.id} className="flex items-center gap-3 py-2 text-[12.5px]">
-                  {t.state === 'completed' ? <CheckCircle2 className="size-4 text-ok" /> : t.state === 'failed' ? <XCircle className="size-4 text-err" /> : t.state === 'cancelled' ? <Square className="size-4 text-dim" /> : <Loader2 className="size-4 animate-spin text-orange" />}
+                  {t.state === 'completed' ? <CheckCircle2 className="size-4 text-ok" /> : t.state === 'failed' ? <XCircle className="size-4 text-err" /> : t.state === 'cancelled' ? <Square className="size-4 text-dim" /> : <Loader2 className="size-4 animate-spin text-accent" />}
                   <span className="truncate flex-1">{t.goal}</span>
                   <span className="text-dim text-[11px] whitespace-nowrap">{fmtTime(t.updatedAt)}</span>
                 </li>
@@ -70,8 +70,8 @@ export function DesktopView() {
       {/* Permissões */}
       <div className="space-y-3 min-w-0">
         <h2 className="font-display text-[15px] px-1">Permissões</h2>
-        <p className="text-[12.5px] text-dim px-1 -mt-2">Dentro do que você liberar, o Jarvis trabalha sem pedir confirmação a cada passo. Exclusões, comandos destrutivos e ações sensíveis sempre pedem a sua confirmação.</p>
-        <PermCard icon={AppWindow} title="Aplicativos" desc="Quais programas o Jarvis pode abrir e controlar." on={g.has('apps.launch')} onToggle={(v) => grant('apps.launch', v)}>
+        <p className="text-[12.5px] text-dim px-1 -mt-2">Dentro do que você liberar, a Lume trabalha sem pedir confirmação a cada passo. Exclusões, comandos destrutivos e ações sensíveis sempre pedem a sua confirmação.</p>
+        <PermCard icon={AppWindow} title="Aplicativos" desc="Quais programas a Lume pode abrir e controlar." on={g.has('apps.launch')} onToggle={(v) => grant('apps.launch', v)}>
           <AppsEditor perms={perms.data} reload={perms.reload} />
         </PermCard>
         <PermCard icon={FolderOpen} title="Pastas" desc="Onde ele pode ler e criar arquivos." on={g.has('fs.read')} onToggle={(v) => grant('fs.read', v)}>
@@ -80,7 +80,7 @@ export function DesktopView() {
           <label className="mt-1.5 flex items-center gap-2 text-[12px] text-muted"><Toggle checked={g.has('fs.delete')} onChange={(v) => grant('fs.delete', v)} label="Excluir arquivos" />Excluir arquivos (sempre com confirmação e backup)</label>
         </PermCard>
         <PermCard icon={MousePointerClick} title="Mouse e teclado" desc="Clicar, digitar e acionar botões dentro dos apps liberados (UI Automation do Windows)." on={g.has('input.control')} onToggle={(v) => grant('input.control', v)} />
-        <PermCard icon={Globe} title="Navegador" desc="Abrir sites, ler páginas, clicar e preencher formulários no navegador do Jarvis. Senhas nunca são preenchidas." on={g.has('browser.control')} onToggle={(v) => grant('browser.control', v)} />
+        <PermCard icon={Globe} title="Navegador" desc="Abrir sites, ler páginas, clicar e preencher formulários no navegador da Lume. Senhas nunca são preenchidas." on={g.has('browser.control')} onToggle={(v) => grant('browser.control', v)} />
         <PermCard icon={TerminalSquare} title="Terminal" desc="Executar comandos (npm, git, python…) em pastas liberadas. Comandos destrutivos pedem confirmação." on={g.has('terminal.exec')} onToggle={(v) => grant('terminal.exec', v)} />
         <PermCard icon={Camera} title="Tela" desc="Capturar a tela ou uma janela para entender a interface. Um aviso aparece a cada captura." on={g.has('screen.capture')} onToggle={(v) => grant('screen.capture', v)} />
       </div>
@@ -111,13 +111,13 @@ function Execution({ t, reply }: { t: ActiveTask; reply?: string }) {
         </div>
       </div>
       <h3 className="mt-3 font-display text-[16px] leading-snug">{t.goal ?? 'Tarefa'}</h3>
-      {cur && <p className="mt-1 text-[12.5px] text-orange-soft flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" />Agora: {cur.tool} {cur.description}</p>}
+      {cur && <p className="mt-1 text-[12.5px] text-accent-soft flex items-center gap-1.5"><Loader2 className="size-3.5 animate-spin" />Agora: {cur.tool} {cur.description}</p>}
       {t.steps.length > 0 && <div className="mt-3"><Meter value={done} max={Math.max(t.steps.length, 1)} tone={failed.length ? 'err' : 'orange'} /><div className="mt-1 text-[11px] text-dim">{done} de {t.steps.length} ações concluídas</div></div>}
       <ol className="mt-3 space-y-1.5">
         {t.steps.map((s) => (
           <li key={s.index} className="flex items-start gap-2 text-[12.5px]">
-            {s.state === 'running' ? <Loader2 className="size-4 mt-0.5 animate-spin text-orange shrink-0" /> : s.state === 'done' ? <CheckCircle2 className="size-4 mt-0.5 text-ok shrink-0" /> : <XCircle className="size-4 mt-0.5 text-err shrink-0" />}
-            <div className="min-w-0"><span className="font-mono text-orange-soft">{s.tool}</span> <span className={cx('break-words', s.state === 'failed' ? 'text-err' : 'text-muted')}>{s.description}</span></div>
+            {s.state === 'running' ? <Loader2 className="size-4 mt-0.5 animate-spin text-accent shrink-0" /> : s.state === 'done' ? <CheckCircle2 className="size-4 mt-0.5 text-ok shrink-0" /> : <XCircle className="size-4 mt-0.5 text-err shrink-0" />}
+            <div className="min-w-0"><span className="font-mono text-accent-soft">{s.tool}</span> <span className={cx('break-words', s.state === 'failed' ? 'text-err' : 'text-muted')}>{s.description}</span></div>
           </li>
         ))}
       </ol>
@@ -128,9 +128,9 @@ function Execution({ t, reply }: { t: ActiveTask; reply?: string }) {
 
 function PermCard({ icon: Icon, title, desc, on, onToggle, children }: { icon: typeof AppWindow; title: string; desc: string; on: boolean; onToggle: (v: boolean) => void; children?: React.ReactNode }) {
   return (
-    <section className={cx('surface rounded-2xl p-4 transition-colors', on && '!border-orange/20')}>
+    <section className={cx('surface rounded-2xl p-4 transition-colors', on && '!border-accent/20')}>
       <div className="flex items-start gap-3">
-        <span className={cx('grid place-items-center size-9 rounded-xl shrink-0', on ? 'bg-orange/[0.14] text-orange-glow' : 'bg-white/[0.04] text-dim')}><Icon className="size-[18px]" /></span>
+        <span className={cx('grid place-items-center size-9 rounded-xl shrink-0', on ? 'bg-accent/[0.14] text-accent-glow' : 'bg-white/[0.04] text-dim')}><Icon className="size-[18px]" /></span>
         <div className="flex-1 min-w-0"><div className="text-[13.5px] font-medium">{title}</div><div className="text-[12px] text-dim">{desc}</div></div>
         <Toggle checked={on} onChange={onToggle} label={title} />
       </div>

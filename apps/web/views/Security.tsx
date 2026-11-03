@@ -43,13 +43,13 @@ export function SecurityView() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Indicator icon={Lock} title="Sessão local" value="Protegida" tone="ok" detail={`Token local · só ${o?.session.boundTo ?? '127.0.0.1'}`} />
         <Indicator icon={Globe} title="Acesso remoto" value={o?.remote.enabled ? (o.remote.connected ? 'Ativo' : 'Desconectado') : 'Desligado'} tone={o?.remote.enabled ? 'warn' : 'ok'} detail={o?.remote.deviceId ? `Dispositivo ${o.remote.deviceId.slice(0, 8)}…` : 'Nenhum celular vinculado'} />
-        <Indicator icon={Mic} title="Microfone" value={mic === 'granted' ? 'Permitido' : mic === 'denied' ? 'Bloqueado' : mic === 'prompt' ? 'Pergunta ao usar' : mic} tone={mic === 'denied' ? 'err' : 'neutral'} detail="Só é usado durante o Jarvis Voice" />
+        <Indicator icon={Mic} title="Microfone" value={mic === 'granted' ? 'Permitido' : mic === 'denied' ? 'Bloqueado' : mic === 'prompt' ? 'Pergunta ao usar' : mic} tone={mic === 'denied' ? 'err' : 'neutral'} detail="Só é usado durante a Lume Voice" />
         <Indicator icon={History} title="Últimas 24 h" value={`${o?.actionsLast24h ?? 0} ações`} tone={o && o.deniedLast24h > 0 ? 'warn' : 'neutral'} detail={`${o?.deniedLast24h ?? 0} bloqueadas por permissão · ${score}/4 verificações ok`} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="space-y-5 min-w-0">
-          <Panel title="O que o Jarvis pode fazer neste PC" icon={<ShieldCheck className="size-4" />} actions={
+          <Panel title="O que a Lume pode fazer neste PC" icon={<ShieldCheck className="size-4" />} actions={
             <div className="flex items-center gap-2 text-[12px]"><span className="text-dim hidden sm:inline">Confirmações</span>
               <Select value={perms.data?.approvalMode ?? 'balanced'} onChange={(v) => act(() => api.req('/api/settings', { method: 'POST', json: { approvalMode: v } }), 'Política atualizada')} options={[{ value: 'balanced', label: 'Só ações sensíveis' }, { value: 'strict', label: 'Toda alteração' }]} /></div>
           }>
@@ -80,7 +80,7 @@ export function SecurityView() {
                 {audit.data.filter((a) => !filter || (a.kind + a.detail).toLowerCase().includes(filter.toLowerCase())).map((a) => (
                   <li key={a.id} className="flex gap-3 py-1.5">
                     <span className="text-dim whitespace-nowrap w-24">{fmtTime(a.created_at)}</span>
-                    <span className={cx('font-mono whitespace-nowrap', /denied|stop|revok|remove/.test(a.kind) ? 'text-err' : /grant|add|set|pair/.test(a.kind) ? 'text-amber' : 'text-orange-soft')}>{a.kind}</span>
+                    <span className={cx('font-mono whitespace-nowrap', /denied|stop|revok|remove/.test(a.kind) ? 'text-err' : /grant|add|set|pair/.test(a.kind) ? 'text-warn' : 'text-accent-soft')}>{a.kind}</span>
                     <span className="text-dim">{a.origin === 'remote' ? 'celular' : a.origin === 'local' ? 'PC' : a.origin}</span>
                     <span className="truncate text-muted">{a.detail === '{}' ? '' : a.detail}</span>
                   </li>
@@ -134,7 +134,7 @@ function Indicator({ icon: Icon, title, value, detail, tone }: { icon: typeof Lo
   return (
     <div className="surface rounded-2xl p-4">
       <div className="flex items-center gap-2 text-[12px] text-dim"><Icon className="size-3.5" />{title}</div>
-      <div className={cx('mt-2 font-display text-[20px] font-semibold', tone === 'ok' && 'text-ok', tone === 'warn' && 'text-amber', tone === 'err' && 'text-err')}>{value}</div>
+      <div className={cx('mt-2 font-display text-[20px] font-semibold', tone === 'ok' && 'text-ok', tone === 'warn' && 'text-warn', tone === 'err' && 'text-err')}>{value}</div>
       <div className="text-[11.5px] text-dim mt-0.5 truncate">{detail}</div>
     </div>
   );
@@ -149,7 +149,7 @@ function RemoteSecurity({ mic }: { mic: string }) {
     <div className="p-4 sm:p-6 max-w-[900px] mx-auto space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
         <Indicator icon={Lock} title="Sessão" value={user?.name || '—'} tone="ok" detail={`Último acesso ${user?.last ? fmtTime(user.last) : '—'}`} />
-        <Indicator icon={Mic} title="Microfone" value={mic === 'granted' ? 'Permitido' : mic === 'denied' ? 'Bloqueado' : 'Pergunta ao usar'} tone={mic === 'denied' ? 'err' : 'neutral'} detail="Usado só no Jarvis Voice" />
+        <Indicator icon={Mic} title="Microfone" value={mic === 'granted' ? 'Permitido' : mic === 'denied' ? 'Bloqueado' : 'Pergunta ao usar'} tone={mic === 'denied' ? 'err' : 'neutral'} detail="Usado só na Lume Voice" />
         <Indicator icon={ShieldAlert} title="Confirmações" value={String(approvals.length)} tone={approvals.length ? 'warn' : 'neutral'} detail="Ações aguardando você" />
       </div>
       <Panel title="Controle" icon={<OctagonX className="size-4" />}>
@@ -159,7 +159,7 @@ function RemoteSecurity({ mic }: { mic: string }) {
           <Button onClick={() => confirm('Sair de todos os aparelhos?') && supabase().auth.signOut({ scope: 'global' })}>Encerrar todas as sessões</Button>
           <Button variant="ghost" icon={<KeyRound className="size-4" />} onClick={async () => { const r = await supabase().rpc('jarvis_new_recovery_code'); if (r.error) notify('err', r.error.message); else setCode((r.data as { recovery_code: string }).recovery_code); }}>Gerar novo código de recuperação</Button>
         </div>
-        {code && <div className="mt-3 rounded-xl border border-amber/30 bg-amber/[0.06] p-3 text-[13px]">Guarde este código: ele permite redefinir sua senha e não será mostrado de novo.<div className="mt-1.5 font-mono text-lg tracking-[0.2em] text-amber select-all">{code}</div></div>}
+        {code && <div className="mt-3 rounded-xl border border-warn/30 bg-warn/[0.06] p-3 text-[13px]">Guarde este código: ele permite redefinir sua senha e não será mostrado de novo.<div className="mt-1.5 font-mono text-lg tracking-[0.2em] text-warn select-all">{code}</div></div>}
       </Panel>
       {approvals.length > 0 && <Panel title="Confirmações pendentes">{approvals.map((a) => <div key={a.id} className="flex items-center gap-2 py-1.5"><span className="font-mono text-[12px] flex-1">{a.tool}</span><Badge tone="warn">{a.risk}</Badge><Button size="sm" variant="primary" onClick={() => decide(a.id, true)}>Permitir</Button><Button size="sm" variant="ghost" onClick={() => decide(a.id, false)}>Negar</Button></div>)}</Panel>}
     </div>

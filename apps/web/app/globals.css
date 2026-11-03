@@ -3,24 +3,25 @@
 @import '@fontsource-variable/space-grotesk';
 @import '@fontsource-variable/jetbrains-mono';
 
-/* Orange Neural Interface — tokens */
+/* Lume — preto + verde-esmeralda */
 @theme {
-  --color-bg: #08090b;
-  --color-surface: #101114;
-  --color-elevated: #17191d;
-  --color-raised: #1d2025;
-  --color-line: rgb(255 255 255 / 0.065);
+  --color-bg: #050606;
+  --color-surface: #0b0d0d;
+  --color-elevated: #111414;
+  --color-raised: #171b1a;
+  --color-line: rgb(255 255 255 / 0.07);
   --color-line-strong: rgb(255 255 255 / 0.12);
-  --color-orange: #ff6d0a;
-  --color-orange-glow: #ff8a2b;
-  --color-orange-soft: #ffb35c;
-  --color-amber: #ffc46b;
-  --color-fg: #eff1f4;
-  --color-muted: #a1a7b2;
-  --color-dim: #626874;
-  --color-ok: #35d49a;
-  --color-err: #ff5d67;
-  --color-warn: #ffc857;
+  --color-accent: #10b981;
+  --color-accent-glow: #34d399;
+  --color-accent-soft: #6ee7b7;
+  --color-accent-2: #a7f3d0;
+  --color-accent-deep: #059669;
+  --color-fg: #eef2f0;
+  --color-muted: #9aa5a1;
+  --color-dim: #5d6764;
+  --color-ok: #34d399;
+  --color-err: #f87171;
+  --color-warn: #fbbf24;
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Space Grotesk Variable', 'Inter Variable', ui-sans-serif, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
@@ -49,33 +50,30 @@ body {
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
-::selection { background: rgb(255 106 0 / 0.35); }
+::selection { background: rgb(16 185 129 / 0.35); }
 
-/* Fundo: grafite profundo com luz âmbar difusa (sem grade nem neon). */
+/* Fundo: preto com uma luz esmeralda muito discreta no topo (sem grade nem neon). */
 .neural-bg {
-  background:
-    radial-gradient(900px 520px at 78% -12%, rgb(255 109 10 / 0.075), transparent 62%),
-    radial-gradient(700px 420px at -8% 108%, rgb(255 196 107 / 0.035), transparent 60%),
-    var(--color-bg);
+  background: radial-gradient(1100px 480px at 60% -18%, rgb(16 185 129 / 0.055), transparent 65%), var(--color-bg);
 }
 .surface { background: var(--color-surface); border: 1px solid var(--color-line); }
 .surface-raised { background: linear-gradient(180deg, var(--color-elevated), var(--color-surface)); border: 1px solid var(--color-line); box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 18px 40px -28px rgb(0 0 0 / 0.9); }
-.accent-text { background: linear-gradient(90deg, var(--color-orange-glow), var(--color-amber)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.accent-text { background: linear-gradient(90deg, var(--color-accent-glow), var(--color-accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .press { transition: transform .12s ease, background-color .15s ease, border-color .15s ease, color .15s ease; }
 .press:active { transform: scale(0.97); }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-.shimmer { background: linear-gradient(90deg, rgb(255 255 255 / 0.03) 25%, rgb(255 179 92 / 0.12) 50%, rgb(255 255 255 / 0.03) 75%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
+.shimmer { background: linear-gradient(90deg, rgb(255 255 255 / 0.03) 25%, rgb(110 231 183 / 0.12) 50%, rgb(255 255 255 / 0.03) 75%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
 @keyframes dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
-.typing span { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: var(--color-orange-soft); margin-right: 3px; animation: dot 1.1s infinite; }
+.typing span { display: inline-block; width: 5px; height: 5px; border-radius: 9999px; background: var(--color-accent-soft); margin-right: 3px; animation: dot 1.1s infinite; }
 .typing span:nth-child(2) { animation-delay: .15s; } .typing span:nth-child(3) { animation-delay: .3s; }
 /* Foco do teclado: na camada base, para que utilitários (outline-none) possam desligá-lo. */
 @layer base {
-  :focus-visible { outline: 2px solid rgb(255 138 43 / 0.8); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid rgb(52 211 153 / 0.8); outline-offset: 2px; }
   textarea:focus-visible, input[type='text']:focus-visible, input[type='password']:focus-visible, input:not([type]):focus-visible { outline: none; }
 }
 /* Caixa de mensagem: brilho suave quando ativa (no lugar do contorno reto). */
 .composer { transition: border-color .2s ease, box-shadow .25s ease; }
-.composer:focus-within { border-color: rgb(255 138 43 / .38); box-shadow: 0 0 0 1px rgb(255 138 43 / .18), 0 8px 32px -8px rgb(255 109 10 / .22); }
+.composer:focus-within { border-color: rgb(52 211 153 / .35); box-shadow: 0 0 0 3px rgb(16 185 129 / .08); }
 
 /* Superfície de vidro com borda fina e luz no topo */
 .glass {
@@ -86,10 +84,10 @@ body {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 20px 50px -30px rgb(0 0 0 / 0.8);
 }
 .glass-hover { transition: border-color .2s, background .2s, transform .2s; }
-.glass-hover:hover { border-color: rgb(255 106 0 / 0.28); }
+.glass-hover:hover { border-color: rgb(16 185 129 / 0.28); }
 
-.glow-text { text-shadow: 0 0 22px rgb(255 106 0 / 0.55); }
-.hairline { background: linear-gradient(90deg, transparent, rgb(255 106 0 / 0.5), transparent); height: 1px; }
+.glow-text { }
+.hairline { background: linear-gradient(90deg, transparent, rgb(16 185 129 / 0.5), transparent); height: 1px; }
 
 .scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / 0.12) transparent; }
 .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -103,11 +101,11 @@ body {
 .prose-jarvis ul, .prose-jarvis ol { margin: 0.4em 0 0.4em 1.25em; }
 .prose-jarvis ul { list-style: disc; }
 .prose-jarvis ol { list-style: decimal; }
-.prose-jarvis li::marker { color: var(--color-orange); }
+.prose-jarvis li::marker { color: var(--color-accent); }
 .prose-jarvis code { font-family: var(--font-mono); font-size: 0.86em; background: rgb(255 255 255 / 0.06); padding: 0.1em 0.35em; border-radius: 5px; }
-.prose-jarvis pre { background: #0a0d12; border: 1px solid var(--color-line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 0.6em 0; }
+.prose-jarvis pre { background: #070909; border: 1px solid var(--color-line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 0.6em 0; }
 .prose-jarvis pre code { background: none; padding: 0; font-size: 12.5px; }
-.prose-jarvis a { color: var(--color-orange-soft); text-decoration: underline; text-underline-offset: 3px; }
+.prose-jarvis a { color: var(--color-accent-soft); text-decoration: underline; text-underline-offset: 3px; }
 .prose-jarvis strong { color: #fff; font-weight: 600; }
 .prose-jarvis hr { border: 0; height: 1px; background: var(--color-line-strong); margin: 0.8em 0; }
 .prose-jarvis table { border-collapse: collapse; margin: 0.5em 0; font-size: 13px; }
@@ -124,7 +122,7 @@ body {
 /* Sem animação por palavra (piscava ao re-renderizar): o texto flui pelo ritmo do useSmoothText. */
 .md-live > :last-child:not(ul):not(ol):not(table):not(.relative)::after {
   content: ''; display: inline-block; width: .5em; height: .5em; margin-left: .3em; border-radius: 9999px; vertical-align: middle;
-  background: var(--color-orange-soft); box-shadow: 0 0 8px rgb(255 140 40 / .55);
+  background: var(--color-accent-soft); 
 }
 /* entradas suaves no site todo */
 .enter { animation: block-in .4s cubic-bezier(.2,.8,.2,1) both; }
@@ -133,6 +131,15 @@ body {
 .lift:hover { transform: translateY(-1px); }
 /* Jarvis Code: indicador de trabalho estilo Claude Code */
 @keyframes star-spin { to { transform: rotate(360deg); } }
-.studio-star { display: inline-block; color: var(--color-orange-soft); animation: star-spin 2.4s linear infinite; text-shadow: 0 0 10px rgb(255 140 40 / .6); }
+.studio-star { display: inline-block; color: var(--color-accent-soft); animation: star-spin 2.4s linear infinite;  }
 @keyframes text-shine { from { background-position: 200% 0; } to { background-position: -200% 0; } }
-.shimmer-text { background: linear-gradient(90deg, var(--color-muted) 30%, #ffd7a8 50%, var(--color-muted) 70%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: text-shine 2.2s linear infinite; }
+.shimmer-text { background: linear-gradient(90deg, var(--color-muted) 30%, #d1fae5 50%, var(--color-muted) 70%); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: text-shine 2.2s linear infinite; }
+
+/* Botão principal: esmeralda sólido, sem gradiente chamativo */
+.btn-accent { background: var(--color-accent); color: #02130d; transition: background-color .15s ease, transform .12s ease, opacity .15s; }
+.btn-accent:hover { background: var(--color-accent-glow); }
+.btn-accent:disabled { opacity: .3; }
+/* Sidebar: transição de largura ao recolher */
+.sidebar-anim { transition: width .22s cubic-bezier(.2,.8,.2,1); }
+.resizer { cursor: col-resize; }
+.resizer:hover::after, .resizer.active::after { content: ''; position: absolute; inset: 0 1px; background: rgb(16 185 129 / .45); }

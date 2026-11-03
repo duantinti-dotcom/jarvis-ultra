@@ -41,7 +41,7 @@ export function createLocalApi(coreUrl: string, token: string): JarvisApi {
     es = new EventSource(`${coreUrl}/api/events?token=${encodeURIComponent(token)}`);
     es.addEventListener('hello', () => setConn('online'));
     es.addEventListener('core', (m) => events.emit(JSON.parse((m as MessageEvent).data)));
-    es.onerror = () => setConn('offline', 'Sem conexão com o JARVIS Core local');
+    es.onerror = () => setConn('offline', 'Sem conexão com a Lume Core local');
   };
   connect();
 

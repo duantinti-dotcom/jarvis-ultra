@@ -25,12 +25,12 @@ export function PairingPanel({ onPaired }: { onPaired?: () => void }) {
     <Panel title="Vincular um computador" icon={<Link2 className="size-4" />}>
       <ol className="text-[12.5px] text-muted list-decimal ml-4 space-y-1">
         <li>Gere um código aqui (vale 10 minutos, uso único).</li>
-        <li>No PC, abra JARVIS → Device Center → “Vincular a este site”.</li>
+        <li>No PC, abra Lume → Device Center → “Vincular a este site”.</li>
         <li>Cole o endereço do relay, a chave pública e o código.</li>
       </ol>
       {code ? (
         <div className="mt-4 text-center">
-          <div className="font-mono text-3xl tracking-[0.35em] text-orange glow-text select-all">{code.code}</div>
+          <div className="font-mono text-3xl tracking-[0.35em] text-accent glow-text select-all">{code.code}</div>
           <div className="text-[11px] text-dim mt-1">expira em {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} · aguardando o PC…</div>
           <div className="mt-3 rounded-xl bg-black/40 p-2.5 text-left text-[10.5px] font-mono text-muted break-all select-all">Relay: {SUPABASE_URL}<br />Chave pública: {SUPABASE_ANON}</div>
         </div>
@@ -76,7 +76,7 @@ function RemoteDevices() {
       </Panel>
       <div className="space-y-4">
         <Panel title="Conectar outro computador" icon={<Link2 className="size-4" />}>
-          <p className="text-[12.5px] text-muted">No app JARVIS do computador, abra <b>Configurações → Dispositivos</b> e entre com este mesmo usuário e senha. Ele aparece aqui na hora.</p>
+          <p className="text-[12.5px] text-muted">No app Lume do computador, abra <b>Configurações → Dispositivos</b> e entre com este mesmo usuário e senha. Ele aparece aqui na hora.</p>
         </Panel>
         <Panel title="Sessão" icon={<LogOut className="size-4" />}>
           <p className="text-[12.5px] text-muted">Conectado como <b className="text-fg">{email}</b>.</p>

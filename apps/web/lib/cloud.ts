@@ -3,7 +3,7 @@ import { supabase, SUPABASE_URL, SUPABASE_ANON } from './remote';
 import type { ChatMessage, ConversationSummary, ReasoningMode } from './types';
 
 /**
- * Jarvis na nuvem: o site conversa sem depender do PC.
+ * Lume na nuvem: o site conversa sem depender do PC.
  * A IA roda na Edge Function `jarvis-ai` (a chave do provedor nunca vem ao navegador).
  */
 const controllers = new Map<string, AbortController>();
@@ -13,7 +13,7 @@ export async function cloudChat(text: string, conversationId: string | null, mod
   const token = data.session?.access_token;
   if (!token) throw new Error('Sessão expirada. Entre novamente.');
   const ac = new AbortController();
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/jarvis-ai`, {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/lume-ai`, {
     method: 'POST', signal: ac.signal,
     headers: { authorization: `Bearer ${token}`, apikey: SUPABASE_ANON, 'content-type': 'application/json' },
     body: JSON.stringify({ text, conversationId, mode, code, voice, desktop }),

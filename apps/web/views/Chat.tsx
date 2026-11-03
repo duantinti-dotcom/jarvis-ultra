@@ -1,5 +1,6 @@
 'use client';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { History } from 'lucide-react';
 import { Plus, Search, Paperclip, ArrowUp, Square, Volume2, CheckCircle2, XCircle, Loader2, Trash2, Pin, PinOff, Copy, Check, RefreshCw, Pencil, Gauge, X, Code2, AudioLines, MonitorCog, FolderKanban, Zap, ChevronDown } from 'lucide-react';
 import { useJarvis, useAsync } from '@/lib/store';
 import { useChat, type LiveMessage, type Stage } from '@/lib/chat';
@@ -11,7 +12,7 @@ import { CloudLogin } from '@/components/CloudLogin';
 const SITE_RE = /\b(cri[ae]r?|fa[çc]a|fazer|gere|gerar|monte|montar|desenvolva|desenvolver|construa|construir|programe|programar|quero)\b[^.?!\n]{0,60}\b(site|website|landing ?page|p[áa]gina (web|de vendas|inicial)|portf[óo]lio|loja( virtual| online)?|app web|aplicativo web|sistema( web)?|jogo (web|em html|no navegador)|card[áa]pio( digital)?|menu digital|dashboard|painel|blog|cat[áa]logo|calculadora|formul[áa]rio|clone d[oe]|p[áa]gina)\b/i;
 import { ModeSelector, MODE_INFO } from '@/components/ModeSelector';
 import { JarvisCore } from '@/components/JarvisCore';
-import { Input, cx, fmtAgo } from '@/components/ui';
+import { Input, cx, fmtAgo, LumeMark } from '@/components/ui';
 import { speakable, ptVoices } from '@/lib/voice';
 import type { ConversationSummary } from '@/lib/types';
 
@@ -51,7 +52,7 @@ export function ChatView() {
     <div className="h-full flex">
       <aside className="hidden md:flex w-[248px] shrink-0 flex-col border-r border-line">
         <div className="p-3 space-y-2">
-          <button onClick={() => chat.open(null)} className="press w-full flex items-center justify-center gap-2 rounded-lg h-9 text-[13px] font-medium bg-gradient-to-b from-orange to-[#e85d00] text-black hover:brightness-110">
+          <button onClick={() => chat.open(null)} className="press w-full flex items-center justify-center gap-2 rounded-lg h-9 text-[13px] font-medium btn-accent">
             <Plus className="size-4" />Nova conversa
           </button>
           <div className="relative">
@@ -94,7 +95,7 @@ export function ChatView() {
             </button>
             {(api.mode === 'local' || api.cloud) && (
               <div className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 flex pr-1">
-                <button aria-label={c.pinned ? 'Desafixar' : 'Fixar'} onClick={() => act(() => (api.pinConversation ? api.pinConversation(c.id, !c.pinned) : api.req(`/api/conversations/${c.id}/pin`, { method: 'POST', json: { pinned: !c.pinned } })))} className="p-1.5 text-dim hover:text-orange-soft">{c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</button>
+                <button aria-label={c.pinned ? 'Desafixar' : 'Fixar'} onClick={() => act(() => (api.pinConversation ? api.pinConversation(c.id, !c.pinned) : api.req(`/api/conversations/${c.id}/pin`, { method: 'POST', json: { pinned: !c.pinned } })))} className="p-1.5 text-dim hover:text-accent-soft">{c.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}</button>
                 <button aria-label="Excluir conversa" onClick={() => confirm('Excluir esta conversa?') && act(async () => { if (api.deleteConversation) await api.deleteConversation(c.id); else await api.req(`/api/conversations/${c.id}`, { method: 'DELETE' }); if (chat.conversationId === c.id) await chat.open(null); })} className="p-1.5 text-dim hover:text-err"><Trash2 className="size-3.5" /></button>
               </div>
             )}
@@ -106,33 +107,39 @@ export function ChatView() {
 }
 
 function Home() {
-  const { api, status, visual, conn } = useJarvis();
+  const { api, status, conn } = useJarvis();
   const chat = useChat();
   const hour = new Date().getHours();
-  const greet = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const greet = hour < 5 ? 'Boa noite' : hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  // O que dá para fazer, explicado em uma linha cada (no site, só o que funciona no site)
   const tools = [
-    { href: '#/code', icon: Code2, title: 'Jarvis Code', text: 'Programe num projeto do seu PC' },
-    { href: '#/voice?auto=1', icon: AudioLines, title: 'Falar com Jarvis', text: 'Conversa por voz em tempo real' },
-    { href: '#/desktop', icon: MonitorCog, title: 'Desktop Control', text: 'Tarefas reais no Windows' },
-    { href: '#/files', icon: FolderKanban, title: 'Arquivos', text: 'Pastas liberadas e projetos' },
+    { href: '#/code', icon: Code2, title: 'Criar um site ou app', text: 'Descreva o projeto; a Lume planeja, cria e mostra o preview' },
+    { href: '#/voice?auto=1', icon: AudioLines, title: 'Conversar por voz', text: 'Fale naturalmente, como numa ligação' },
+    { href: '#/history', icon: History, title: 'Projetos e conversas', text: 'Retome o que você já fez' },
+    ...(api.cloud ? [] : [{ href: '#/desktop', icon: MonitorCog, title: 'Tarefas no PC', text: 'Abrir apps, organizar arquivos e mais' }]),
   ];
-  const suggestions = api.cloud ? ['Crie uma imagem de uma cidade futurista ao pôr do sol', 'Me ajude a planejar minha semana', 'Explique como funciona a inteligência artificial', 'Escreva uma função em Python que ordena uma lista'] : ['Como está meu computador agora?', 'Quais arquivos mudaram hoje nas minhas pastas?', 'Crie uma imagem de um robô laranja futurista', 'Do que estávamos falando ontem?'];
+  const suggestions = api.cloud
+    ? ['Crie uma imagem de uma cafeteria minimalista ao amanhecer', 'Monte um plano de estudos de 4 semanas para inglês', 'Explique a diferença entre SQL e NoSQL com exemplos', 'Escreva uma função em Python que valida CPF']
+    : ['Como está meu computador agora?', 'Organize minha pasta de Downloads', 'Crie uma imagem de uma cidade futurista', 'Do que estávamos falando ontem?'];
   return (
     <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
-      <JarvisCore state={conn === 'online' ? visual : 'offline'} size={168} />
-      <h2 className="mt-2 font-display text-[26px] sm:text-[30px] font-semibold tracking-tight text-center">{greet}. <span className="accent-text">Como posso ajudar?</span></h2>
-      <p className="mt-2 text-[13px] text-dim text-center">{api.cloud ? `IA na nuvem · modo ${MODE_INFO[chat.mode].label}${status?.online ? ' · seu PC está conectado' : ''}` : status?.device?.model ? `Modelo local ${status.device.model.replace(/:latest$/, '')} · modo ${MODE_INFO[chat.mode].label}` : conn === 'online' ? 'Nenhum modelo instalado — veja Configurações → Modelos' : 'Conectando ao Jarvis…'}</p>
-      <div className="mt-7 grid grid-cols-2 lg:grid-cols-4 gap-2.5 w-full max-w-3xl">
-        {tools.map((t) => (
-          <a key={t.title} href={t.href} className="press surface rounded-xl p-3.5 hover:border-orange/30 hover:bg-white/[0.03] group">
-            <t.icon className="size-[18px] text-orange-glow" />
-            <div className="mt-2.5 text-[13px] font-medium">{t.title}</div>
-            <div className="text-[11.5px] text-dim mt-0.5">{t.text}</div>
+      <LumeMark className="size-12" />
+      <h2 className="mt-5 font-display text-[26px] sm:text-[32px] font-semibold tracking-tight text-center">{greet}. Como posso ajudar?</h2>
+      <p className="mt-2 text-[13px] text-dim text-center">{api.cloud ? `Escreva abaixo para conversar · modo ${MODE_INFO[chat.mode].label}${status?.online ? ' · seu PC está conectado' : ''}` : status?.device?.model ? `Modelo local ${status.device.model.replace(/:latest$/, '')} · modo ${MODE_INFO[chat.mode].label}` : conn === 'online' ? 'Nenhum modelo instalado — veja Configurações → Modelos' : 'Conectando…'}</p>
+      <div className={cx('mt-8 grid gap-2 w-full max-w-3xl', tools.length > 3 ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3')}>
+        {tools.map((t, i) => (
+          <a key={t.title} href={t.href} style={{ animationDelay: `${i * 50}ms` }} className="enter press group rounded-xl border border-line bg-white/[0.015] p-4 transition-colors hover:border-accent/30 hover:bg-accent/[0.03]">
+            <t.icon className="size-[18px] text-accent-glow" />
+            <div className="mt-3 text-[13.5px] font-medium">{t.title}</div>
+            <div className="text-[12px] text-dim mt-1 leading-snug">{t.text}</div>
           </a>
         ))}
       </div>
-      <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-3xl">
-        {suggestions.map((s) => <button key={s} onClick={() => chat.send(s)} className="press rounded-full border border-line px-3 h-8 text-[12px] text-muted hover:text-fg hover:border-orange/35">{s}</button>)}
+      <div className="mt-6 w-full max-w-3xl">
+        <div className="label-tech mb-2 text-center">Experimente</div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {suggestions.map((x) => <button key={x} onClick={() => chat.send(x)} className="press rounded-full border border-line px-3.5 h-8 text-[12px] text-muted hover:text-fg hover:border-accent/35 transition-colors">{x}</button>)}
+        </div>
       </div>
     </div>
   );
@@ -142,7 +149,7 @@ function StageLine({ stage }: { stage: Stage }) {
   const text = stage.kind === 'tool' ? `Usando ${stage.tool}` : stage.kind === 'writing' ? 'Escrevendo' : 'Pensando';
   return (
     <div className="flex items-center gap-2.5 text-[12.5px] text-muted animate-fade-up" role="status">
-      <span className="size-5 rounded-full bg-gradient-to-br from-orange to-amber shadow-[0_0_14px_rgba(255,109,10,.7)] animate-pulse-soft" />
+      <span className="size-5 rounded-full bg-accent animate-pulse-soft" />
       <span className="font-medium text-fg/90">{text}</span>
       <span className="typing" aria-hidden><span /><span /><span /></span>
     </div>
@@ -169,10 +176,10 @@ function Composer() {
     if (chat.busy && !toCode) return;
     setText('');
     setImages([]);
-    // "crie um site/landing page/portfólio…": quem faz isso de verdade é o Jarvis Code
+    // "crie um site/landing page/portfólio…": quem faz isso de verdade é a Lume Code
     if (toCode) {
       queueStudioPrompt(t);
-      notify('ok', 'Abrindo o Jarvis Code para criar o site…');
+      notify('ok', 'Abrindo a Lume Code para criar o site…');
       location.hash = '#/code';
       return;
     }
@@ -204,16 +211,16 @@ function Composer() {
   return (
     <div className="px-3 sm:px-6 pb-4 pt-2">
       {api.mode === 'local' && !chat.cloudOk && (
-        <div className="max-w-3xl mx-auto mb-2 rounded-xl border border-orange/25 bg-orange/[0.06] px-3.5 py-2 text-[12.5px] text-muted">
-          {connect ? <CloudLogin title="Conectar à nuvem" text="Com sua conta Jarvis conectada, as conversas usam a IA da nuvem (rápida) e o PC fica para abrir apps, arquivos e tarefas no computador." onDone={() => setConnect(false)} /> : (
-            <button onClick={() => setConnect(true)} className="flex items-center gap-2.5 text-left hover:text-fg"><Zap className="size-4 shrink-0 text-orange-glow" /><span>O chat está usando só o modelo do seu PC (mais lento). <b className="text-orange-soft">Conecte sua conta Jarvis</b> para respostas rápidas da nuvem.</span></button>
+        <div className="max-w-3xl mx-auto mb-2 rounded-xl border border-accent/25 bg-accent/[0.06] px-3.5 py-2 text-[12.5px] text-muted">
+          {connect ? <CloudLogin title="Conectar à nuvem" text="Com sua conta Lume conectada, as conversas usam a IA da nuvem (rápida) e o PC fica para abrir apps, arquivos e tarefas no computador." onDone={() => setConnect(false)} /> : (
+            <button onClick={() => setConnect(true)} className="flex items-center gap-2.5 text-left hover:text-fg"><Zap className="size-4 shrink-0 text-accent-glow" /><span>O chat está usando só o modelo do seu PC (mais lento). <b className="text-accent-soft">Conecte sua conta Lume</b> para respostas rápidas da nuvem.</span></button>
           )}
         </div>
       )}
       {turbo === false && (
-        <a href="#/settings/brain" className="enter max-w-3xl mx-auto mb-2 flex items-center gap-2.5 rounded-xl border border-orange/25 bg-orange/[0.06] hover:bg-orange/[0.1] px-3.5 py-2 text-[12.5px] text-muted hover:text-fg transition-colors">
-          <Zap className="size-4 shrink-0 text-orange-glow" />
-          <span>Modo grátis: a IA pública está lenta (5–15 s). <b className="text-orange-soft">Ative o modo turbo grátis</b> e o Jarvis responde em ~1 s e fica bem mais inteligente.</span>
+        <a href="#/settings/brain" className="enter max-w-3xl mx-auto mb-2 flex items-center gap-2.5 rounded-xl border border-accent/25 bg-accent/[0.06] hover:bg-accent/[0.1] px-3.5 py-2 text-[12.5px] text-muted hover:text-fg transition-colors">
+          <Zap className="size-4 shrink-0 text-accent-glow" />
+          <span>Modo grátis: a IA pública está lenta (5–15 s). <b className="text-accent-soft">Ative o modo turbo grátis</b> e a Lume responde em ~1 s e fica bem mais inteligente.</span>
         </a>
       )}
       <div className="composer max-w-3xl mx-auto surface-raised rounded-2xl"
@@ -229,7 +236,7 @@ function Composer() {
             ))}
           </div>
         )}
-        <textarea ref={taRef} rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensagem para o Jarvis…" aria-label="Mensagem"
+        <textarea ref={taRef} rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensagem para a Lume…" aria-label="Mensagem"
           onPaste={(e) => { const f = [...e.clipboardData.files].find((x) => x.type.startsWith('image/')); if (f) { e.preventDefault(); void attach(f); } }}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           className="w-full max-h-56 min-h-12 resize-none bg-transparent px-4 pt-3 pb-1 text-[14.5px] outline-none focus-visible:outline-none placeholder:text-dim field-sizing-content" />
@@ -243,12 +250,12 @@ function Composer() {
             {chat.busy ? (
               <button aria-label="Parar geração" title="Parar (Esc)" onClick={chat.cancel} className="press grid place-items-center size-9 rounded-xl bg-white/10 hover:bg-white/15"><Square className="size-3.5 fill-current" /></button>
             ) : (
-              <button aria-label="Enviar" onClick={send} disabled={!text.trim() && !images.length} className="press grid place-items-center size-9 rounded-xl bg-gradient-to-b from-orange to-[#e85d00] text-black disabled:opacity-25"><ArrowUp className="size-[18px]" /></button>
+              <button aria-label="Enviar" onClick={send} disabled={!text.trim() && !images.length} className="press grid place-items-center size-9 rounded-xl btn-accent disabled:opacity-25"><ArrowUp className="size-[18px]" /></button>
             )}
           </div>
         </div>
       </div>
-      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">{api.cloud || chat.cloudOk ? "Jarvis na nuvem: conversa, programa e cria imagens. Ações no computador rodam no seu PC." : "O Jarvis roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes."}</p>
+      <p className="max-w-3xl mx-auto mt-1.5 text-center text-[10.5px] text-dim">{api.cloud || chat.cloudOk ? "Lume na nuvem: conversa, programa e cria imagens. Ações no computador rodam no seu PC." : "A Lume roda localmente no seu PC e verifica as ações que executa. Mesmo assim, confira informações importantes."}</p>
     </div>
   );
 }
@@ -275,7 +282,7 @@ const Message = memo(function Message({ m, canRegenerate }: { m: LiveMessage; ca
             <textarea value={draft} onChange={(e) => setDraft(e.target.value)} className="w-full bg-transparent outline-none text-[14px] p-2 min-h-16 field-sizing-content" autoFocus />
             <div className="flex gap-2 justify-end">
               <button className="press px-3 h-8 rounded-lg text-[12.5px] text-muted hover:text-fg" onClick={() => setEditing(false)}>Cancelar</button>
-              <button className="press px-3 h-8 rounded-lg text-[12.5px] bg-orange text-black" onClick={() => { setEditing(false); if (m.seq) void chat.edit(m.seq, draft); }}>Enviar edição</button>
+              <button className="press px-3 h-8 rounded-lg text-[12.5px] bg-accent text-black" onClick={() => { setEditing(false); if (m.seq) void chat.edit(m.seq, draft); }}>Enviar edição</button>
             </div>
           </div>
         ) : m.content ? (
@@ -292,17 +299,17 @@ const Message = memo(function Message({ m, canRegenerate }: { m: LiveMessage; ca
   return (
     <div className="group animate-fade-up">
       <div className="flex items-center gap-2 mb-2">
-        <span className="size-[18px] rounded-full bg-gradient-to-br from-orange to-amber shadow-[0_0_12px_rgba(255,109,10,.55)]" />
-        <span className="font-display text-[12.5px] font-semibold tracking-wider">JARVIS</span>
+        <span className="size-[18px] rounded-full bg-accent" />
+        <span className="font-display text-[12.5px] font-semibold tracking-wider">Lume</span>
         {metrics?.mode && <span className="text-[10.5px] text-dim">· {MODE_INFO[metrics.mode].label}</span>}
-        {m.streaming && <Loader2 className="size-3.5 animate-spin text-orange" />}
+        {m.streaming && <Loader2 className="size-3.5 animate-spin text-accent" />}
       </div>
       {!!m.tools?.length && (
         <div className="mb-2.5 space-y-1">
           {m.tools.map((t) => (
             <div key={t.callId} className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 py-1.5 text-[12px]">
-              {t.running ? <Loader2 className="size-3.5 animate-spin text-orange" /> : t.ok ? <CheckCircle2 className="size-3.5 text-ok" /> : <XCircle className="size-3.5 text-err" />}
-              <span className="font-mono text-orange-soft">{t.tool}</span>
+              {t.running ? <Loader2 className="size-3.5 animate-spin text-accent" /> : t.ok ? <CheckCircle2 className="size-3.5 text-ok" /> : <XCircle className="size-3.5 text-err" />}
+              <span className="font-mono text-accent-soft">{t.tool}</span>
               <span className="truncate text-muted">{t.running ? 'executando…' : t.summary}</span>
               {t.durationMs != null && <span className="ml-auto text-dim tabular-nums">{t.durationMs} ms</span>}
             </div>
@@ -364,7 +371,7 @@ function Thinking({ text, live, ms }: { text: string; live: boolean; ms?: number
         {!live && <ChevronDown className={cx('size-3.5 transition-transform', open && 'rotate-180')} />}
       </button>
       {show && (
-        <div className="enter mt-1.5 ml-1 pl-3 border-l-2 border-orange/25 max-h-40 overflow-y-auto scroll-thin text-[12.5px] leading-relaxed text-dim whitespace-pre-wrap">{text}</div>
+        <div className="enter mt-1.5 ml-1 pl-3 border-l-2 border-accent/25 max-h-40 overflow-y-auto scroll-thin text-[12.5px] leading-relaxed text-dim whitespace-pre-wrap">{text}</div>
       )}
     </div>
   );

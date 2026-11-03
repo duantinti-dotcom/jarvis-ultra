@@ -2,7 +2,7 @@
 /**
  * Voz neural masculina (Piper "faber", pt-BR) rodando no próprio navegador:
  * nada de chave nem servidor. Baixa ~80 MB uma única vez (fica no cache).
- * O áudio sai como AudioBuffer, então dá para aplicar o efeito "JARVIS".
+ * O áudio sai como AudioBuffer, então dá para aplicar o efeito "Lume".
  */
 type Ort = {
   env: { wasm: { wasmPaths: string; numThreads: number } };
@@ -123,7 +123,7 @@ export function synthNeural(ctx: BaseAudioContext, text: string, speed = 1): Pro
   return job;
 }
 
-// ---------------------------------------------------------------- efeito "JARVIS"
+// ---------------------------------------------------------------- efeito "Lume"
 const irCache = new WeakMap<BaseAudioContext, AudioBuffer>();
 function impulse(ctx: BaseAudioContext) {
   let ir = irCache.get(ctx);

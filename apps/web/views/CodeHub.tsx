@@ -5,11 +5,11 @@ import { Loader2, Sparkles, FolderGit2 } from 'lucide-react';
 import { useJarvis } from '@/lib/store';
 import { cx } from '@/components/ui';
 
-const loading = () => <div className="h-full grid place-items-center"><Loader2 className="size-5 animate-spin text-orange" /></div>;
+const loading = () => <div className="h-full grid place-items-center"><Loader2 className="size-5 animate-spin text-accent" /></div>;
 const StudioView = dynamic(() => import('./Studio').then((m) => m.StudioView), { loading, ssr: false });
 const CodeView = dynamic(() => import('./Code').then((m) => m.CodeView), { loading, ssr: false });
 
-/** Jarvis Code: estúdio de sites (site e app) + projetos do PC (só no app desktop). */
+/** Lume Code: estúdio de sites (site e app) + projetos do PC (só no app desktop). */
 export function CodeHub() {
   const { api } = useJarvis();
   const local = api.mode === 'local';

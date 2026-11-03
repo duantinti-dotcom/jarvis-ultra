@@ -30,7 +30,7 @@ function bestBrowserVoice() {
 
 function micError(e: unknown): string {
   const n = (e as { name?: string }).name;
-  if (n === 'NotAllowedError' || n === 'SecurityError') return 'Permissão do microfone negada. Libere o microfone para o JARVIS nas configurações de privacidade do Windows (Configurações → Privacidade → Microfone) ou do navegador e tente de novo.';
+  if (n === 'NotAllowedError' || n === 'SecurityError') return 'Permissão do microfone negada. Libere o microfone para a Lume nas configurações de privacidade do Windows (Configurações → Privacidade → Microfone) ou do navegador e tente de novo.';
   if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Nenhum microfone encontrado. Conecte um microfone e tente novamente.';
   if (n === 'NotReadableError') return 'O microfone está em uso por outro programa ou indisponível.';
   return (e as Error).message ?? String(e);
@@ -96,7 +96,7 @@ export function VoiceView() {
     const prev = ph.current;
     ph.current = p;
     setPhase(p);
-    // Reconhecimento do navegador: pausa enquanto o Jarvis fala (evita eco) e volta ao ouvir.
+    // Reconhecimento do navegador: pausa enquanto a Lume fala (evita eco) e volta ao ouvir.
     const r = rec.current;
     if (r) {
       if (p === 'speaking' && prev !== 'speaking') { try { r.abort(); } catch {} }
@@ -239,14 +239,14 @@ export function VoiceView() {
   const start = useCallback(async () => {
     if (ph.current !== 'off') return;
     setError(null);
-    if (conn !== 'online') return setError('O Jarvis está offline. Verifique se o aplicativo está aberto no computador.');
+    if (conn !== 'online') return setError('A Lume está offline. Verifique se o aplicativo está aberto no computador.');
     if (!sttAvailable) return setError(isDesktopApp() ? 'O reconhecimento de voz local ainda não está instalado. Clique em “Instalar reconhecimento de voz” abaixo (cerca de 150 MB).' : 'Este navegador não oferece reconhecimento de voz. Use o Chrome/Edge ou o app do computador.');
     setP('starting');
     ttsFailed.current = false;
     try { outCtx.current ??= new AudioContext(); void outCtx.current.resume(); } catch { outCtx.current = null; }
     try {
       mic.current = await openMic({
-        // Durante a fala do Jarvis o limiar sobe bastante: só voz humana próxima interrompe (evita eco).
+        // Durante a fala da Lume o limiar sobe bastante: só voz humana próxima interrompe (evita eco).
         sensitivity: () => (ph.current === 'speaking' ? 7 : 3),
         minSpeechMs: 300,
         onSpeechStart: () => {
@@ -350,12 +350,12 @@ export function VoiceView() {
   useEffect(() => { if (Object.values(installs.data ?? {}).some((x) => x.status === 'instalado')) void vs.reload(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [JSON.stringify(installs.data)]);
 
   return (
-    <div className="relative h-full overflow-hidden bg-[radial-gradient(1000px_600px_at_50%_35%,rgba(255,109,10,0.10),transparent_65%)]">
+    <div className="relative h-full overflow-hidden bg-[radial-gradient(1000px_600px_at_50%_35%,rgba(16,185,129,0.10),transparent_65%)]">
       <a href="#/chat" className="absolute left-4 top-4 z-10 press flex items-center gap-1.5 rounded-lg px-2.5 h-8 text-[12.5px] text-muted hover:text-fg hover:bg-white/5"><ArrowLeft className="size-4" />Voltar</a>
       <div className="absolute right-4 top-4 z-10"><ModeSelector value={mode} onChange={setMode} compact /></div>
       <div className="h-full overflow-y-auto scroll-thin flex flex-col items-center px-4 pt-14 pb-8">
         <VoiceSphere state={sphere} level={micOn || phase === 'speaking' ? level : 0} size={typeof window !== 'undefined' ? Math.min(360, window.innerWidth - 32) : 360} />
-        <div className="mt-1 font-display tracking-[0.22em] text-[12.5px] uppercase text-orange-soft" aria-live="polite">{LABEL[phase]}</div>
+        <div className="mt-1 font-display tracking-[0.22em] text-[12.5px] uppercase text-accent-soft" aria-live="polite">{LABEL[phase]}</div>
 
         {captions && phase !== 'off' && (
           <div className="mt-5 w-full max-w-2xl min-h-[96px] text-center space-y-2.5" aria-live="polite">
@@ -368,14 +368,14 @@ export function VoiceView() {
 
         <div className="mt-7 flex items-center gap-3">
           {phase === 'off' ? (
-            <button onClick={start} className="press inline-flex items-center gap-3 rounded-full bg-gradient-to-b from-orange to-[#e85d00] text-black h-14 pl-5 pr-7 font-display font-semibold text-[15px] shadow-[0_10px_50px_-12px_rgba(255,109,10,0.9)]">
-              <AudioLines className="size-5" />Falar com Jarvis
+            <button onClick={start} className="press inline-flex items-center gap-3 rounded-full btn-accent h-14 pl-5 pr-7 font-display font-semibold text-[15px]">
+              <AudioLines className="size-5" />Falar com Lume
             </button>
           ) : (
             <>
               <RoundBtn label={micOn ? 'Silenciar microfone' : 'Ativar microfone'} on={micOn} onClick={() => setMicOn((m) => !m)}>{micOn ? <Mic className="size-5" /> : <MicOff className="size-5" />}</RoundBtn>
-              <button aria-label="Encerrar conversa" onClick={end} className="press grid place-items-center size-16 rounded-full bg-err text-white shadow-[0_10px_40px_-10px_rgba(255,93,103,0.8)]"><PhoneOff className="size-6" /></button>
-              <RoundBtn label={speakerOn ? 'Desativar voz do Jarvis' : 'Ativar voz do Jarvis'} on={speakerOn} onClick={() => { if (speakerOn) stopSpeaking(); setSpeakerOn((s) => !s); }}>{speakerOn ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}</RoundBtn>
+              <button aria-label="Encerrar conversa" onClick={end} className="press grid place-items-center size-16 rounded-full bg-err text-white"><PhoneOff className="size-6" /></button>
+              <RoundBtn label={speakerOn ? 'Desativar voz da Lume' : 'Ativar voz da Lume'} on={speakerOn} onClick={() => { if (speakerOn) stopSpeaking(); setSpeakerOn((s) => !s); }}>{speakerOn ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}</RoundBtn>
             </>
           )}
         </div>
@@ -390,24 +390,24 @@ export function VoiceView() {
           <EngineCard title="Ouvir (reconhecimento)" ok={coreStt || (!isDesktopApp() && sttAvailable)}
             detail={coreStt ? `Local: ${vs.data?.stt.engine}` : !local ? 'Reconhecimento do navegador' : isDesktopApp() ? 'Não instalado' : 'Reconhecimento do navegador'}
             action={local && vs.data?.installable.whisper ? <InstallBtn st={installs.data?.whisper} onClick={() => install('whisper')} label="Instalar reconhecimento de voz" /> : null} />
-          <EngineCard title="Falar (voz do Jarvis)" ok={coreTts || (useNeural && neural.status === 'ready')}
-            detail={vs.data?.elevenlabs.configured ? 'ElevenLabs (voz premium)' : vs.data?.tts.engine ? `Piper local · ${vs.data.tts.voices[0] ?? ''}` : useNeural ? (neural.status === 'ready' ? 'Voz neural masculina JARVIS (no navegador)' : neural.status === 'loading' ? `Baixando a voz JARVIS… ${neural.progress}% (uma única vez)` : neural.status === 'error' ? `Voz neural indisponível agora (sem acesso ao servidor da voz); usando ${bestBrowserVoice()?.name ?? 'a voz do sistema'}` : 'Preparando a voz JARVIS…') : `Voz do sistema${bestBrowserVoice() ? ` · ${bestBrowserVoice()!.name}` : ''}`}
+          <EngineCard title="Falar (voz da Lume)" ok={coreTts || (useNeural && neural.status === 'ready')}
+            detail={vs.data?.elevenlabs.configured ? 'ElevenLabs (voz premium)' : vs.data?.tts.engine ? `Piper local · ${vs.data.tts.voices[0] ?? ''}` : useNeural ? (neural.status === 'ready' ? 'Voz neural masculina Lume (no navegador)' : neural.status === 'loading' ? `Baixando a voz Lume… ${neural.progress}% (uma única vez)` : neural.status === 'error' ? `Voz neural indisponível agora (sem acesso ao servidor da voz); usando ${bestBrowserVoice()?.name ?? 'a voz do sistema'}` : 'Preparando a voz Lume…') : `Voz do sistema${bestBrowserVoice() ? ` · ${bestBrowserVoice()!.name}` : ''}`}
             action={
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-2 text-[12px] text-muted cursor-pointer select-none">
-                  <input type="checkbox" checked={fx} onChange={(e) => { setFx(e.target.checked); try { localStorage.setItem('jarvis.voice.fx', e.target.checked ? '1' : '0'); } catch {} }} className="accent-[#ff8a2b]" />
-                  Timbre tecnológico (efeito JARVIS)
+                  <input type="checkbox" checked={fx} onChange={(e) => { setFx(e.target.checked); try { localStorage.setItem('jarvis.voice.fx', e.target.checked ? '1' : '0'); } catch {} }} className="accent-[#34d399]" />
+                  Timbre tecnológico (efeito Lume)
                 </label>
-                {useNeural && neural.status === 'error' && <button className="text-[12px] text-orange-soft hover:underline" onClick={() => void prepareNeuralVoice().catch(() => {})}>Tentar de novo</button>}
-                {local && vs.data?.installable.piper ? <InstallBtn st={installs.data?.piper} onClick={() => install('piper')} label="Instalar voz natural" /> : local ? <a href="#/settings/voice" className="text-[12px] text-orange-soft hover:underline">Ajustar voz</a> : null}
+                {useNeural && neural.status === 'error' && <button className="text-[12px] text-accent-soft hover:underline" onClick={() => void prepareNeuralVoice().catch(() => {})}>Tentar de novo</button>}
+                {local && vs.data?.installable.piper ? <InstallBtn st={installs.data?.piper} onClick={() => install('piper')} label="Instalar voz natural" /> : local ? <a href="#/settings/voice" className="text-[12px] text-accent-soft hover:underline">Ajustar voz</a> : null}
               </div>
             } />
         </div>
 
         {!local && (
           <a href="#/settings/brain" className="mt-3 w-full max-w-2xl surface rounded-xl px-3.5 py-2.5 text-[12.5px] text-muted hover:text-fg flex items-center gap-2.5 lift">
-            <span className="size-2 shrink-0 rounded-full bg-orange shadow-[0_0_8px_rgba(255,140,40,.8)]" />
-            <span>Quer o Jarvis bem mais inteligente e respondendo em menos de 1 s? Adicione sua chave grátis da Groq em <b className="text-orange-soft">Configurações → Inteligência</b>.</span>
+            <span className="size-2 shrink-0 rounded-full bg-accent" />
+            <span>Quer a Lume bem mais inteligente e respondendo em menos de 1 s? Adicione sua chave grátis da Groq em <b className="text-accent-soft">Configurações → Inteligência</b>.</span>
           </a>
         )}
 
@@ -431,14 +431,14 @@ function RoundBtn({ label, on, onClick, children }: { label: string; on: boolean
 function EngineCard({ title, ok, detail, action }: { title: string; ok: boolean; detail: string; action: React.ReactNode }) {
   return (
     <div className="surface rounded-xl p-3.5">
-      <div className="flex items-center gap-2"><span className={cx('size-2 rounded-full', ok ? 'bg-ok' : 'bg-amber')} /><span className="text-[13px] font-medium">{title}</span></div>
+      <div className="flex items-center gap-2"><span className={cx('size-2 rounded-full', ok ? 'bg-ok' : 'bg-warn')} /><span className="text-[13px] font-medium">{title}</span></div>
       <div className="mt-1 text-[12px] text-dim">{detail}</div>
       {action && <div className="mt-2.5">{action}</div>}
     </div>
   );
 }
 function InstallBtn({ st, onClick, label }: { st?: { status: string; progress: number; error?: string }; onClick: () => void; label: string }) {
-  if (st?.status && st.status !== 'erro' && st.status !== 'instalado') return <div className="text-[12px] text-muted flex items-center gap-2"><Loader2 className="size-3.5 animate-spin text-orange" />{st.status} {st.progress ? `${st.progress}%` : ''}</div>;
+  if (st?.status && st.status !== 'erro' && st.status !== 'instalado') return <div className="text-[12px] text-muted flex items-center gap-2"><Loader2 className="size-3.5 animate-spin text-accent" />{st.status} {st.progress ? `${st.progress}%` : ''}</div>;
   return (
     <>
       <Button size="sm" icon={<Download className="size-3.5" />} onClick={onClick}>{label}</Button>

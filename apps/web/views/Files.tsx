@@ -44,13 +44,13 @@ export function FilesView() {
           <ul className="divide-y divide-[var(--color-line)]">
             {entries.map((e) => (
               <li key={e.path} className="group flex items-center gap-3 px-4 h-11 hover:bg-white/[0.02]">
-                {e.type === 'dir' ? <Folder className="size-4 text-amber/80" /> : <FileText className="size-4 text-dim" />}
+                {e.type === 'dir' ? <Folder className="size-4 text-warn/80" /> : <FileText className="size-4 text-dim" />}
                 <button className="flex-1 min-w-0 truncate text-left text-[13px]" onClick={() => (e.type === 'dir' ? setDir(e.path) : askAbout(e.path, 'Leia e resuma o arquivo'))}>{e.name}</button>
                 <span className="hidden sm:block text-[11px] text-dim w-20 text-right">{e.type === 'dir' ? '' : fmtBytes(e.size)}</span>
                 <span className="hidden md:block text-[11px] text-dim w-24 text-right">{fmtAgo(e.modified)}</span>
                 <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                  {e.type === 'dir' && <button title="Abrir no Jarvis Code" onClick={() => openInCode(e.path)} className="p-1.5 text-dim hover:text-orange-soft"><Code2 className="size-3.5" /></button>}
-                  <button title="Perguntar ao Jarvis" onClick={() => askAbout(e.path, e.type === 'dir' ? 'Analise esta pasta e me diga o que ela contém' : 'Leia e resuma o arquivo')} className="p-1.5 text-dim hover:text-orange-soft"><MessageSquare className="size-3.5" /></button>
+                  {e.type === 'dir' && <button title="Abrir na Lume Code" onClick={() => openInCode(e.path)} className="p-1.5 text-dim hover:text-accent-soft"><Code2 className="size-3.5" /></button>}
+                  <button title="Perguntar à Lume" onClick={() => askAbout(e.path, e.type === 'dir' ? 'Analise esta pasta e me diga o que ela contém' : 'Leia e resuma o arquivo')} className="p-1.5 text-dim hover:text-accent-soft"><MessageSquare className="size-3.5" /></button>
                 </div>
               </li>
             ))}
@@ -61,16 +61,16 @@ export function FilesView() {
 
       <div className="space-y-5">
         <section className="surface rounded-2xl p-4">
-          <h3 className="font-display text-[14px] flex items-center gap-2"><Briefcase className="size-4 text-orange-glow" />Projetos</h3>
+          <h3 className="font-display text-[14px] flex items-center gap-2"><Briefcase className="size-4 text-accent-glow" />Projetos</h3>
           <ul className="mt-2 space-y-1">
             {projects.data?.map((p) => (
               <li key={p.id} className="group flex items-center gap-2 text-[12.5px] py-1">
                 <button className="flex-1 truncate text-left hover:text-fg" onClick={() => p.path && openInCode(p.path)} title={p.path ?? ''}>{p.name}</button>
-                {p.path && <button title="Abrir no Code" onClick={() => openInCode(p.path!)} className="text-dim hover:text-orange-soft"><Code2 className="size-3.5" /></button>}
+                {p.path && <button title="Abrir no Code" onClick={() => openInCode(p.path!)} className="text-dim hover:text-accent-soft"><Code2 className="size-3.5" /></button>}
                 <button title="Remover" onClick={() => api.req(`/api/projects/${p.id}`, { method: 'DELETE' }).then(() => projects.reload())} className="opacity-0 group-hover:opacity-100 text-dim hover:text-err"><Trash2 className="size-3.5" /></button>
               </li>
             ))}
-            {!projects.data?.length && <li className="text-[12px] text-dim">Registre um projeto para o Jarvis lembrar dele nas conversas.</li>}
+            {!projects.data?.length && <li className="text-[12px] text-dim">Registre um projeto para a Lume lembrar dele nas conversas.</li>}
           </ul>
           <div className="mt-2 flex gap-1.5">
             <Input value={pname} onChange={(e) => setPname(e.target.value)} placeholder="Nome do projeto" className="h-8 text-[12px]" />
@@ -78,7 +78,7 @@ export function FilesView() {
           </div>
         </section>
         <section className="surface rounded-2xl p-4">
-          <h3 className="font-display text-[14px] flex items-center gap-2"><Clock className="size-4 text-orange-glow" />Modificados recentemente</h3>
+          <h3 className="font-display text-[14px] flex items-center gap-2"><Clock className="size-4 text-accent-glow" />Modificados recentemente</h3>
           <ul className="mt-2 space-y-1.5">
             {recent.data?.data?.files.map((f) => (
               <li key={f.path} className="text-[12px]"><button onClick={() => askAbout(f.path, 'Leia e resuma o arquivo')} className="w-full text-left truncate hover:text-fg text-muted" title={f.path}>{f.path.split(/[\\/]/).pop()}</button><div className="text-[10.5px] text-dim">{fmtAgo(f.modified)}</div></li>

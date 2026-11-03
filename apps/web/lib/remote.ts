@@ -108,7 +108,7 @@ export function createRemoteApi(deviceId: string | null): JarvisApi {
     const { data } = await sb.from("jarvis_devices").select('id,name,platform,created_at,last_seen_at,revoked_at,status').eq('id', deviceId).single();
     device = (data as Device) ?? null;
     if (!device || device.revoked_at) setConn('no-device', 'Dispositivo revogado ou removido');
-    else setConn(isOnline(device) ? 'online' : 'offline', isOnline(device) ? undefined : 'O computador está offline (desligado, sem internet ou com o JARVIS fechado).');
+    else setConn(isOnline(device) ? 'online' : 'offline', isOnline(device) ? undefined : 'O computador está offline (desligado, sem internet ou com a Lume fechado).');
   };
   if (deviceId) {
     void refreshDevice();
@@ -120,7 +120,7 @@ export function createRemoteApi(deviceId: string | null): JarvisApi {
   }, 4000);
 
   const ensureOnline = () => {
-    if (!isOnline(device)) throw new Error('O computador está offline. Ligue o PC e abra o JARVIS para executar esta ação.');
+    if (!isOnline(device)) throw new Error('O computador está offline. Ligue o PC e abra a Lume para executar esta ação.');
   };
 
   return {
@@ -173,7 +173,7 @@ export function createRemoteApi(deviceId: string | null): JarvisApi {
       return (await command<{ live: Record<string, unknown> }>(deviceId!, { kind: 'status.get' })).live;
     },
     async req() {
-      throw new Error('Disponível somente no aplicativo JARVIS do computador.');
+      throw new Error('Disponível somente no aplicativo Lume do computador.');
     },
   };
 }

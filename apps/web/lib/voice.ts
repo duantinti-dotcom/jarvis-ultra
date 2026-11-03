@@ -7,7 +7,7 @@ export async function openMic(opts: {
   onSpeechEnd: (wav: Blob, durationMs: number) => void;
   silenceMs?: number;
   minSpeechMs?: number;
-  /** Multiplicador sobre o piso de ruído; maior = menos sensível (usado durante a fala do JARVIS). */
+  /** Multiplicador sobre o piso de ruído; maior = menos sensível (usado durante a fala da Lume). */
   sensitivity?: () => number;
 }): Promise<MicHandle> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });

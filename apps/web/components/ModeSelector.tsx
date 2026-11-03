@@ -17,8 +17,8 @@ export function ModeSelector({ value, onChange, compact }: { value: ReasoningMod
         const on = value === m;
         return (
           <button key={m} role="radio" aria-checked={on} title={MODE_INFO[m].desc} onClick={() => onChange(m)}
-            className={cx('press flex items-center gap-1.5 rounded-md h-7 text-[12px]', compact ? 'px-2' : 'px-2.5', on ? 'bg-gradient-to-b from-orange/25 to-orange/10 text-fg shadow-[inset_0_0_0_1px_rgba(255,138,43,0.35)]' : 'text-dim hover:text-muted')}>
-            <I className={cx('size-3.5', on && 'text-orange-glow')} />
+            className={cx('press flex items-center gap-1.5 rounded-md h-7 text-[12px]', compact ? 'px-2' : 'px-2.5', on ? 'bg-gradient-to-b from-accent/25 to-accent/10 text-fg shadow-[inset_0_0_0_1px_rgba(52,211,153,0.35)]' : 'text-dim hover:text-muted')}>
+            <I className={cx('size-3.5', on && 'text-accent-glow')} />
             {!compact && MODE_INFO[m].label}
           </button>
         );

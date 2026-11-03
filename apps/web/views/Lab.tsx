@@ -44,7 +44,7 @@ export function LabView() {
         </Panel>
         <Panel title="Experimentos" icon={<FlaskConical className="size-4" />} bodyClass="p-2">
           {!exps.data?.length ? <Empty title="Nenhum experimento" /> : exps.data.map((e) => (
-            <button key={e.id} onClick={() => setSel(e.id)} className={cx('w-full text-left rounded-xl px-3 py-2 flex items-center gap-2', sel === e.id ? 'bg-orange/10' : 'hover:bg-white/[0.04]')}>
+            <button key={e.id} onClick={() => setSel(e.id)} className={cx('w-full text-left rounded-xl px-3 py-2 flex items-center gap-2', sel === e.id ? 'bg-accent/10' : 'hover:bg-white/[0.04]')}>
               <div className="min-w-0 flex-1"><div className="text-[12.5px] truncate font-mono">{e.title}</div><div className="text-[10.5px] text-dim">{fmtTime(e.updatedAt)}</div></div>
               <Badge tone={TONE[e.status] ?? 'neutral'} pulse={e.status === 'testing' || e.status === 'generating'}>{e.status}</Badge>
             </button>
@@ -67,14 +67,14 @@ export function LabView() {
           <Panel title={exp.title} icon={<FlaskConical className="size-4" />} actions={
             <div className="flex gap-2">
               <Button size="sm" icon={<Play className="size-3.5" />} onClick={() => run(() => api.req(`/api/lab/${exp.id}/files`, { method: 'PUT', json: { files: draft } }), 'Testes executados')} disabled={exp.status === 'installed'}>Salvar e testar</Button>
-              <Button size="sm" variant="primary" icon={<ShieldCheck className="size-3.5" />} disabled={exp.status !== 'passed'} onClick={() => confirm(`Instalar ${exp.title}? Ele poderá ser usado pelo JARVIS com as permissões declaradas no manifesto.`) && run(() => api.req(`/api/lab/${exp.id}/approve`, { method: 'POST' }), 'Plugin aprovado e instalado')}>Aprovar instalação</Button>
+              <Button size="sm" variant="primary" icon={<ShieldCheck className="size-3.5" />} disabled={exp.status !== 'passed'} onClick={() => confirm(`Instalar ${exp.title}? Ele poderá ser usado pela Lume com as permissões declaradas no manifesto.`) && run(() => api.req(`/api/lab/${exp.id}/approve`, { method: 'POST' }), 'Plugin aprovado e instalado')}>Aprovar instalação</Button>
               {exp.status !== 'installed' && <Button size="sm" variant="ghost" icon={<X className="size-3.5" />} onClick={() => run(() => api.req(`/api/lab/${exp.id}/reject`, { method: 'POST' }))}>Rejeitar</Button>}
             </div>
           }>
             <p className="text-[12.5px] text-muted">{exp.problem}</p>
             {exp.report && <p className={cx('mt-2 text-[12.5px]', exp.testPassed ? 'text-ok' : 'text-warn')}>{exp.report}</p>}
             <div className="mt-3 flex gap-1 border-b border-line">
-              {Object.keys(draft).map((f) => <button key={f} onClick={() => setFile(f)} className={cx('px-3 h-8 text-[12px] font-mono rounded-t-lg', file === f ? 'bg-white/[0.06] text-orange-soft' : 'text-dim hover:text-fg')}>{f}</button>)}
+              {Object.keys(draft).map((f) => <button key={f} onClick={() => setFile(f)} className={cx('px-3 h-8 text-[12px] font-mono rounded-t-lg', file === f ? 'bg-white/[0.06] text-accent-soft' : 'text-dim hover:text-fg')}>{f}</button>)}
             </div>
             <textarea spellCheck={false} value={draft[file] ?? ''} onChange={(e) => setDraft({ ...draft, [file]: e.target.value })} readOnly={exp.status === 'installed'}
               className="w-full h-80 mt-0 rounded-b-xl bg-[#0a0d12] border border-line border-t-0 p-3 font-mono text-[12px] leading-relaxed outline-none scroll-thin" aria-label={`Editor ${file}`} />
@@ -83,7 +83,7 @@ export function LabView() {
               <div><div className="label-tech mb-1">Comparação de alterações</div><pre className="h-48 overflow-auto scroll-thin rounded-xl bg-black/40 p-2.5 text-[11px] font-mono whitespace-pre">{exp.diff ? exp.diff.split('\n').filter((l) => !l.startsWith('  ')).slice(0, 300).map((l, i) => <div key={i} className={l.startsWith('+') ? 'text-ok' : l.startsWith('-') ? 'text-err' : ''}>{l}</div>) : 'Sem alterações manuais.'}</pre></div>
             </div>
           </Panel>
-        ) : <Panel><Empty icon={<FlaskConical className="size-8" />} title="Selecione ou crie um experimento">O LAB é o ambiente de evolução do JARVIS: gerar, testar, comparar e aprovar novas ferramentas.</Empty></Panel>}
+        ) : <Panel><Empty icon={<FlaskConical className="size-8" />} title="Selecione ou crie um experimento">O LAB é o ambiente de evolução da Lume: gerar, testar, comparar e aprovar novas ferramentas.</Empty></Panel>}
 
         <Panel title="Melhoria contínua — análise das execuções reais" icon={<Lightbulb className="size-4" />}>
           <ErrorNote error={improve.error} />
